@@ -65,3 +65,12 @@ export {
   type Storage,
 } from './storage/storage';
 export { easing, Tweens, type Easing, type TweenHandle, type TweenOptions } from './tween';
+export {
+  solveSearch,
+  type SearchLimits,
+  type SearchProblem,
+  type SearchResult,
+  type SearchStatus,
+  type Solver,
+} from './puzzle/solver';
+export { UndoStack } from './puzzle/undo';

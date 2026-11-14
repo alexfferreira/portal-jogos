@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./meta": "./src/meta.ts"
+    "./meta": "./src/meta.ts",
+    "./logic": "./src/logic/index.ts",
+    "./worker": "./src/worker/index.ts"
   },
   "scripts": {
     "check": "tsc --noEmit"
