@@ -37,3 +37,7 @@ e2e/              testes Playwright
 ```
 
 Observação: `pnpm test:e2e` faz o build sozinho. Se já houver um `preview` na porta 4173, o teste reaproveita esse servidor, que pode estar com build antigo.
+
+## Testes e2e
+
+`pnpm test:e2e` sobe o site estático (porta 4173) e o dev server (porta 5174) e roda dois projetos do Playwright: `build` (suíte completa) e `dev` (smoke do Worker contra o `vite dev`). Para rodar só um: `pnpm exec playwright test --project=dev`.

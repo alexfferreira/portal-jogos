@@ -58,10 +58,79 @@ interface Pending {
   cleanup(): void;
 }
 
+// IMPORTANTE: o Vite só empacota o Worker se ele for referenciado de um jeito que ele reconheça.
+// `new Worker(new URL('./x.ts', import.meta.url))` literal só funciona escrito inline; escondê-lo
+// numa função auxiliar faz o build NÃO gerar o arquivo do Worker (regressão já vista: o e2e
+// `worker.spec.ts` pega isso). O import `?worker&url` entrega a URL final, que também serve
+// para os diagnósticos de falha.
+import logicWorkerUrl from './logic.worker.ts?worker&url';
+
+/** URL (já resolvida pelo Vite, em dev ou no build) do módulo do Worker. */
+const workerUrl = (): string =>
+  new URL(logicWorkerUrl, globalThis.location?.href ?? import.meta.url).href;
+
 function defaultCreateWorker(): WorkerLike {
-  return new Worker(new URL('./logic.worker.ts', import.meta.url), {
-    type: 'module',
-  }) as unknown as WorkerLike;
+  return new Worker(logicWorkerUrl, { type: 'module' }) as unknown as WorkerLike;
+}
+
+/** Campos de um `ErrorEvent` (ou de um `Error`) que ajudam a entender uma falha do Worker. */
+export interface WorkerErrorDetails {
+  url?: string;
+  message: string;
+  filename?: string;
+  line?: number;
+  column?: number;
+}
+
+/**
+ * Extrai o que dá de um evento de erro do Worker. Quando o script nem chega a carregar
+ * (404, 403, MIME errado), o navegador entrega um `ErrorEvent` sem mensagem; nesse caso o texto
+ * diz isso e aponta para a URL, que é a pista que sobra.
+ */
+export function describeWorkerError(e: unknown, url?: string): WorkerErrorDetails {
+  const ev = (e ?? {}) as {
+    message?: unknown;
+    filename?: unknown;
+    lineno?: unknown;
+    colno?: unknown;
+  };
+  const message =
+    typeof ev.message === 'string' && ev.message !== ''
+      ? ev.message
+      : e instanceof Error && e.message !== ''
+        ? e.message
+        : 'o script do worker não pôde ser carregado ou lançou um erro sem mensagem';
+  return {
+    url,
+    message,
+    filename: typeof ev.filename === 'string' && ev.filename !== '' ? ev.filename : undefined,
+    line: typeof ev.lineno === 'number' && ev.lineno > 0 ? ev.lineno : undefined,
+    column: typeof ev.colno === 'number' && ev.colno > 0 ? ev.colno : undefined,
+  };
+}
+
+/** Texto de uma linha para a mensagem do `Error` e para o log. */
+export function formatWorkerError(d: WorkerErrorDetails): string {
+  const where = d.filename
+    ? ` em ${d.filename}${d.line ? `:${d.line}${d.column ? `:${d.column}` : ''}` : ''}`
+    : '';
+  const url = d.url ? ` [${d.url}]` : '';
+  return `falha no worker${url}: ${d.message}${where}`;
+}
+
+/**
+ * Pergunta à própria URL do Worker o que ela responde. Só roda depois de uma falha, para
+ * mostrar o status HTTP (ex.: 403 do `server.fs.allow` do Vite, 404 de um caminho errado).
+ */
+async function probeWorkerUrl(url: string): Promise<void> {
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    console.error(
+      `[mistura] sonda do Worker: ${url} respondeu HTTP ${res.status} (${res.headers.get('content-type') ?? 'sem content-type'})`,
+    );
+  } catch (err) {
+    console.error(`[mistura] sonda do Worker: não foi possível buscar ${url}`, err);
+  }
 }
 
 async function defaultFallback(req: LogicRequest): Promise<LogicResponse> {
@@ -139,23 +208,34 @@ export function createLogicClient(options: LogicClientOptions = {}): LogicClient
     const create =
       options.createWorker ?? (typeof Worker === 'undefined' ? undefined : defaultCreateWorker);
     if (!create) return null;
+    // Só o Worker padrão tem uma URL conhecida; workers injetados (testes) não.
+    const url = options.createWorker ? undefined : workerUrl();
     try {
       const w = create();
       w.onmessage = (e) => {
         if (worker === w) settle(e.data);
       };
-      w.onerror = () => {
+      w.onerror = (e) => {
         if (worker !== w) return;
+        const details = describeWorkerError(e, url);
+        const text = formatWorkerError(details);
+        console.error(`[mistura] ${text}`, details);
+        // Sem mensagem do navegador o script provavelmente nem carregou: consulta a URL.
+        if (url && !(e as { message?: unknown } | null)?.message) void probeWorkerUrl(url);
         dropWorker();
         current = null;
-        rejectAll(() => new Error('falha no worker'));
+        rejectAll(() => new Error(text));
       };
-      w.onmessageerror = () => {
-        if (worker === w) failCurrent('mensagem do worker ilegível');
+      w.onmessageerror = (e) => {
+        if (worker !== w) return;
+        console.error(`[mistura] mensagem do worker ilegível${url ? ` [${url}]` : ''}`, e);
+        failCurrent('mensagem do worker ilegível');
       };
       worker = w;
       return w;
-    } catch {
+    } catch (err) {
+      // Cai no fallback (thread principal), mas deixa o motivo registrado.
+      console.error(`[mistura] não foi possível criar o Worker${url ? ` [${url}]` : ''}`, err);
       return null;
     }
   };

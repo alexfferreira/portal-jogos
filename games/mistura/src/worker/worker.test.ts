@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateLevel, parseState } from '../logic';
-import { CancelledError, createLogicClient, type WorkerLike } from './client';
+import {
+  CancelledError,
+  createLogicClient,
+  describeWorkerError,
+  formatWorkerError,
+  type WorkerLike,
+} from './client';
 import { handleRequest } from './handler';
 import type { LogicRequest, LogicResponse } from './protocol';
 
@@ -270,5 +276,99 @@ describe('createLogicClient', () => {
       },
     });
     await expect(client.generateLevel(1)).rejects.toThrow('quebrou');
+  });
+});
+
+describe('diagnóstico de falha do Worker', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('describeWorkerError usa a mensagem, o arquivo e a posição do ErrorEvent', () => {
+    const d = describeWorkerError(
+      { message: 'x is not defined', filename: 'http://h/w.js', lineno: 12, colno: 5 },
+      'http://h/logic.worker.ts',
+    );
+    expect(d).toEqual({
+      url: 'http://h/logic.worker.ts',
+      message: 'x is not defined',
+      filename: 'http://h/w.js',
+      line: 12,
+      column: 5,
+    });
+    expect(formatWorkerError(d)).toBe(
+      'falha no worker [http://h/logic.worker.ts]: x is not defined em http://h/w.js:12:5',
+    );
+  });
+
+  it('sem mensagem (script não carregou) o texto diz isso e aponta para a URL', () => {
+    const text = formatWorkerError(
+      describeWorkerError({ message: '' }, 'http://h/logic.worker.ts'),
+    );
+    expect(text).toContain('http://h/logic.worker.ts');
+    expect(text).toContain('não pôde ser carregado');
+  });
+
+  it('aceita um Error comum e valores estranhos', () => {
+    expect(describeWorkerError(new Error('boom')).message).toBe('boom');
+    expect(describeWorkerError(undefined).message).toContain('sem mensagem');
+    expect(describeWorkerError('texto').message).toContain('sem mensagem');
+  });
+
+  it('onerror registra a mensagem real e rejeita com ela', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fake = new FakeWorker();
+    const client = createLogicClient({ createWorker: () => fake });
+    const p = client.generateLevel(1);
+    fake.onerror?.({ message: 'SyntaxError: boom', filename: 'w.js', lineno: 3, colno: 1 });
+    await expect(p).rejects.toThrow('falha no worker: SyntaxError: boom em w.js:3:1');
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('SyntaxError: boom'),
+      expect.objectContaining({ message: 'SyntaxError: boom', line: 3 }),
+    );
+  });
+
+  it('Worker padrão: erro sem mensagem registra a URL e a sonda mostra o status HTTP', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fake = new FakeWorker();
+    let createdWith: unknown;
+    vi.stubGlobal(
+      'Worker',
+      class {
+        constructor(url: URL) {
+          createdWith = url;
+          return fake;
+        }
+      },
+    );
+    const fetchMock = vi.fn(async () => ({
+      status: 403,
+      headers: new Headers({ 'content-type': 'text/plain' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createLogicClient();
+    const p = client.generateLevel(1);
+    expect(String(createdWith)).toContain('logic.worker');
+    fake.onerror?.({ message: '' });
+    await expect(p).rejects.toThrow(/falha no worker \[.*logic\.worker.*\]/);
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith(expect.stringContaining('HTTP 403')));
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('falha ao criar o Worker é registrada e cai no fallback', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const client = createLogicClient({
+      createWorker: () => {
+        throw new Error('sem permissão');
+      },
+      fallback: (req) => handleRequest(req),
+    });
+    expect((await client.generateLevel(2)).level).toBe(2);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('não foi possível criar o Worker'),
+      expect.any(Error),
+    );
   });
 });
