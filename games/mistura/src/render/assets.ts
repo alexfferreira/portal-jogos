@@ -23,6 +23,7 @@ import {
 } from 'three';
 import { TUBE, tubeHeight } from './layout';
 import { createSymbolAtlas, type SymbolAtlas } from './symbols';
+import { createBottomUnitGeometry } from './unitGeometry';
 
 /** Raio do líquido (um pouco menor que o do vidro). */
 export const LIQUID_RADIUS = TUBE.radius - 0.075;
@@ -120,17 +121,11 @@ export class Assets {
     // Geometrias de unidade, com a origem na base (a escala em Y cresce para cima).
     const rl = LIQUID_RADIUS;
     const uh = TUBE.unitHeight;
-    const profile: Vector2[] = [];
-    const arc = high ? 8 : 5;
-    for (let i = 0; i <= arc; i++) {
-      const a = -Math.PI / 2 + (i / arc) * (Math.PI / 2);
-      profile.push(new Vector2(Math.cos(a) * rl, rl + Math.sin(a) * rl));
-    }
-    profile.push(new Vector2(rl, uh), new Vector2(0, uh));
-    profile[0] = new Vector2(0, 0);
-    this.unitBottom = new LatheGeometry(profile, radial);
+    // Sem tampo no perfil: veja `unitGeometry.ts` (o tampo deixava o segmento de baixo mais claro).
+    this.unitBottom = createBottomUnitGeometry(rl, uh, high ? 8 : 5, radial);
     this.unitMid = new CylinderGeometry(rl, rl, uh, radial, 1, false).translate(0, uh / 2, 0);
-    this.surface = new CircleGeometry(rl * 0.98, radial).rotateX(-Math.PI / 2);
+    // A superfície fecha o topo aberto do segmento; raio igual ao da unidade, sem fresta.
+    this.surface = new CircleGeometry(rl, radial).rotateX(-Math.PI / 2);
     this.rimGeometry = high
       ? new TorusGeometry(TUBE.radius - 0.02, 0.034, 6, radial).rotateX(Math.PI / 2)
       : null;
