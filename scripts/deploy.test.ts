@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getTransformedRoutes } from '@vercel/routing-utils';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error módulo .mjs sem tipos
 import { createBuildServer } from './serve-build.mjs';
@@ -16,6 +17,19 @@ const policy = loadPolicy();
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 
 describe('vercel.json', () => {
+  it('é aceito pelo validador de rotas da própria Vercel (@vercel/routing-utils)', () => {
+    // É o mesmo validador do painel: pega `source` inválido (ex.: alternação) antes do deploy.
+    const c = config as { headers: unknown[]; rewrites: unknown[] };
+    const { error, warnings } = getTransformedRoutes({
+      headers: c.headers as never,
+      rewrites: c.rewrites as never,
+      cleanUrls: config.cleanUrls as boolean,
+      trailingSlash: config.trailingSlash as boolean,
+    });
+    expect(error?.message).toBeUndefined();
+    expect(warnings ?? []).toEqual([]);
+  });
+
   it('comandos, saída e opções que evitam redirecionamentos (cleanUrls/trailingSlash)', () => {
     expect(config.framework).toBeNull();
     expect(config.installCommand).toBe('pnpm install --frozen-lockfile');
@@ -130,6 +144,10 @@ describe('vercel.json', () => {
     for (const s of sources) {
       expect(outside(s), s).not.toMatch(/[:*]/);
       expect(s, s).not.toContain('(?:');
+      // A Vercel recusou, no primeiro deploy, o source "/(icon-.*\.png|apple-touch-icon\.png|
+      // favicon\.(ico|svg))" com "Header at index 7 has invalid `source` pattern". Não usamos
+      // alternação: uma regra por arquivo, em texto literal.
+      expect(s, s).not.toContain('|');
     }
   });
 

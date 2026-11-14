@@ -84,7 +84,7 @@ A Vercel pega o código do GitHub, roda o build e publica em um endereço `https
 3. **Importe o projeto.** No painel, clique em **Add New... > Project**, ache `portal-jogos` na lista e clique em **Import**.
 4. **Preencha a tela de configuração.** Quase tudo vem do arquivo `vercel.json` do repositório:
    - **Framework Preset:** `Other`.
-   - **Root Directory:** deixe a raiz do repositório (`./`). Não aponte para `apps/portal`: o projeto é um monorepo pnpm e o build precisa da raiz.
+   - **Root Directory:** a raiz do repositório (`./`). **Atenção:** a Vercel costuma detectar o SvelteKit sozinha e preencher `apps/portal` (e Application Preset `SvelteKit`). Clique em **Edit** ao lado do Root Directory e troque para a raiz (`./`), e troque o preset para `Other`. Com `apps/portal` ela não lê o `vercel.json` da raiz, e o projeto é um monorepo pnpm cujo build precisa da raiz.
    - **Build Command, Install Command e Output Directory:** o `vercel.json` já define (`pnpm build`, `pnpm install --frozen-lockfile`, `apps/portal/build`). Se a tela mostrar esses campos, não precisa mudar nada: o `vercel.json` prevalece sobre eles (para mudar um comando, edite o `vercel.json`).
    - **Environment Variables:** nenhuma (a única exceção possível está em "Contorno se o pnpm não instalar").
 5. Clique em **Deploy**. O primeiro build leva de 1 a 2 minutos (estimativa). Ao terminar a Vercel mostra o endereço de produção (algo como `portal-jogos.vercel.app`).
