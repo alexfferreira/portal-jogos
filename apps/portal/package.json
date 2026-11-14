@@ -22,5 +22,8 @@
     "@recreio/core": "workspace:*",
     "@recreio/game-mistura": "workspace:*",
     "@recreio/ui": "workspace:*"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
   }
 }

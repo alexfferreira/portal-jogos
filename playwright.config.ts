@@ -8,6 +8,7 @@ export default defineConfig({
     baseURL: 'http://localhost:4173',
     ...devices['Pixel 7'],
     viewport: { width: 390, height: 844 },
+    locale: 'pt-BR',
   },
   webServer: {
     command: 'pnpm build && pnpm preview --port 4173 --strictPort',
