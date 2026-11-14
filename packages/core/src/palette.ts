@@ -7,7 +7,7 @@ export interface PaletteColor {
 }
 
 /**
- * Paleta global (12 cores bem distintas, saturadas). Cada cor tem um símbolo
+ * Paleta global (14 cores bem distintas). Cada cor tem um símbolo
  * para o modo daltônico, usado por todos os jogos.
  */
 export const PALETTE: readonly PaletteColor[] = [
@@ -23,6 +23,8 @@ export const PALETTE: readonly PaletteColor[] = [
   { id: 'pink', hex: 0xf06ca8, symbol: '✿' },
   { id: 'brown', hex: 0x7a4a2a, symbol: '✖' },
   { id: 'gray', hex: 0x8d99a6, symbol: '◐' },
+  { id: 'charcoal', hex: 0x2f3640, symbol: '♣' },
+  { id: 'sky', hex: 0x6ecbf5, symbol: '✦' },
 ] as const;
 
 export function paletteColor(index: number): PaletteColor {

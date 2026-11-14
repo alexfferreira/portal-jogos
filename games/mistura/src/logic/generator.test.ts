@@ -22,7 +22,7 @@ describe('levelConfig (curva de dificuldade)', () => {
     }
   });
 
-  it('até a 30: 5-7 cores; até a 100: 8-10; depois 11-12', () => {
+  it('até a 30: 5-7 cores; até a 100: 8-10; depois 11-14', () => {
     const inRange = (from: number, to: number, min: number, max: number): boolean => {
       for (let l = from; l <= to; l++) {
         const c = levelConfig(l).colors;
@@ -32,7 +32,14 @@ describe('levelConfig (curva de dificuldade)', () => {
     };
     expect(inRange(6, 30, 5, 7)).toBe(true);
     expect(inRange(31, 100, 8, 10)).toBe(true);
-    expect(inRange(101, 400, 11, 12)).toBe(true);
+    expect(inRange(101, 400, 11, 14)).toBe(true);
+    // 14 cores (toda a paleta) só a partir da fase 251.
+    expect(levelConfig(100).colors).toBe(10);
+    expect(levelConfig(101).colors).toBe(11);
+    expect(levelConfig(151).colors).toBe(12);
+    expect(levelConfig(201).colors).toBe(13);
+    expect(levelConfig(251).colors).toBe(14);
+    expect(levelConfig(1000).colors).toBe(14);
   });
 
   it('nunca excede as cores da paleta', () => {
@@ -196,4 +203,25 @@ describe('primeiras 200 fases', () => {
     expect(worst.ms).toBeLessThan(1500);
     expect(avg).toBeLessThan(300);
   }, 60_000);
+});
+
+describe('fases tardias com 13 e 14 cores', () => {
+  it('fases 201–300 (amostra) são resolvíveis, com replay independente e rápidas', () => {
+    let worst = 0;
+    for (let level = 201; level <= 300; level += 7) {
+      const t0 = performance.now();
+      const g = generateLevel(level);
+      worst = Math.max(worst, performance.now() - t0);
+      expect(g.config.colors).toBe(levelConfig(level).colors);
+      expect(isWin(replay(g.state, g.solution))).toBe(true);
+    }
+    expect(worst).toBeLessThan(3000);
+    console.log(`[fases 201-300] pior geração: ${worst.toFixed(0)} ms`);
+  });
+
+  it('a partir da fase 251 usa as 14 cores da paleta', () => {
+    const g = generateLevel(260);
+    const colors = new Set(g.state.tubes.flat().map((u) => u.color));
+    expect(colors.size).toBe(14);
+  });
 });

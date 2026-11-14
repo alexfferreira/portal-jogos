@@ -134,15 +134,27 @@ describe('Tweens', () => {
 });
 
 describe('PALETTE', () => {
-  it('tem 12 cores, com ids, hex e símbolos únicos', () => {
-    expect(PALETTE).toHaveLength(12);
-    expect(new Set(PALETTE.map((c) => c.id)).size).toBe(12);
-    expect(new Set(PALETTE.map((c) => c.hex)).size).toBe(12);
-    expect(new Set(PALETTE.map((c) => c.symbol)).size).toBe(12);
+  it('tem 14 cores, com ids, hex e símbolos únicos', () => {
+    expect(PALETTE).toHaveLength(14);
+    expect(new Set(PALETTE.map((c) => c.id)).size).toBe(14);
+    expect(new Set(PALETTE.map((c) => c.hex)).size).toBe(14);
+    expect(new Set(PALETTE.map((c) => c.symbol)).size).toBe(14);
+  });
+
+  it('quaisquer duas cores ficam bem afastadas (distância RGB mínima)', () => {
+    const rgb = (h: number) => [(h >> 16) & 255, (h >> 8) & 255, h & 255] as const;
+    for (let i = 0; i < PALETTE.length; i++) {
+      for (let j = i + 1; j < PALETTE.length; j++) {
+        const [r1, g1, b1] = rgb(PALETTE[i]!.hex);
+        const [r2, g2, b2] = rgb(PALETTE[j]!.hex);
+        const d = Math.hypot(r1 - r2, g1 - g2, b1 - b2);
+        expect(d, PALETTE[i]!.id + ' x ' + PALETTE[j]!.id).toBeGreaterThanOrEqual(60);
+      }
+    }
   });
 
   it('paletteColor dá a volta nos índices', () => {
-    expect(paletteColor(12)).toBe(PALETTE[0]);
-    expect(paletteColor(-1)).toBe(PALETTE[11]);
+    expect(paletteColor(14)).toBe(PALETTE[0]);
+    expect(paletteColor(-1)).toBe(PALETTE[13]);
   });
 });

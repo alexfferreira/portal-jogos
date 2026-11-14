@@ -84,3 +84,9 @@ Registro de decisões tomadas durante o desenvolvimento. Formato: data · decis�
 - **2026-11-14 · `Session.undo` devolve `rehidden`:** unidades que voltaram a "?" (restaurado oculto e atual visível na mesma posição), para o render animar. Vale também ao desfazer a jogada que completou um tubo (as unidades reveladas por ele voltam a "?").
 - **2026-11-14 · Entradas do jogo:** `@recreio/game-mistura` (index) exporta só meta/messages/misturaGame; a lógica fica em `@recreio/game-mistura/logic` e o cliente do worker em `@recreio/game-mistura/worker`. O portal segue importando `/meta` e o index por `import()`.
 - **2026-11-14 · `solveSearch` só lê o relógio quando há `maxMillis`.** O teste das 200 fases agora afirma que nenhuma precisou de variação > 0, que há capacidade 5 e camadas ocultas nas fases 101–200 e camadas ocultas em parte das 40–100.
+
+### Paleta de 14 cores (decisão do Alex, 2026-11-14)
+
+- A paleta global passou de 12 para **14 cores** (acrescentadas `charcoal` `#2f3640` ♣ e `sky` `#6ecbf5` ✦), para a Mistura chegar às 11–14 cores da spec. Teste novo exige distância RGB ≥ 60 entre quaisquer duas cores.
+- Curva final de cores: 101–150 → 11; 151–200 → 12; 201–250 → 13; **251 em diante → 14**. Fases 201–300 (amostra) validadas pelo solver com replay independente.
+- Os símbolos do modo daltônico são caracteres Unicode; no marco 5 serão desenhados como formas vetoriais (não dependem de fonte do aparelho).
