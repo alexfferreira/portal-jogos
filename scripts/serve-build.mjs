@@ -1,20 +1,22 @@
 // SOMENTE PARA TESTE LOCAL, NÃO PARA PRODUÇÃO (sem compressão, sem HTTPS, sem limites).
 //
-// Servidor estático mínimo para o build (`apps/portal/build`), com o mesmo comportamento que a
-// hospedagem de produção precisa ter: fallback SPA (200.html) para rotas do app e cabeçalhos de
-// cache (service worker e manifest sem cache agressivo; arquivos com hash por um ano).
+// Servidor estático mínimo para o build (`apps/portal/build`). Ele aplica o `vercel.json` da raiz:
+// cabeçalhos de cache/segurança e fallback SPA (`rewrites` para `/200.html`). Assim o que os testes
+// e2e e o `pnpm serve` mostram é o que a Vercel deve entregar. Como na Vercel: arquivo que existe
+// vence; rota sem extensão (fora de `/_app/`) cai no `200.html`; o resto é 404 (um chunk
+// inexistente nunca vira HTML).
 //
 // Por que não `vite preview`: ele não serve `200.html`, então o service worker não consegue
-// pré-cachear o fallback e rotas como /jogo/xyz dão 404 offline. Este servidor é o caminho
-// recomendado para testar o PWA (e o que os testes e2e usam).
+// pré-cachear o fallback e rotas como /jogo/xyz dão 404 offline.
 //
 // Uso: node scripts/serve-build.mjs [--port 4173] [--host] [--dir apps/portal/build]
 import { createReadStream } from 'node:fs';
-import { pipeline } from 'node:stream/promises';
 import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
+import { headersFor, loadPolicy, rewriteFor } from './vercel-policy.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -39,32 +41,28 @@ async function isFile(path) {
   }
 }
 
-function cacheControl(pathname) {
-  if (pathname.startsWith('/_app/immutable/')) return 'public, max-age=31536000, immutable';
-  // service-worker.js, manifest, HTML, ícones: sempre revalidar.
-  return 'no-cache';
-}
-
 /**
  * Cria o servidor (sem iniciar). `transform` é um gancho para testes: recebe o caminho e o
  * conteúdo de um arquivo e pode devolver outro conteúdo (ex.: simular uma segunda versão do
- * service worker).
+ * service worker) ou `null` para responder 404.
  *
- * @param {{ dir?: string, transform?: (pathname: string, body: Buffer) => Buffer | null | undefined }} [options]
+ * @param {{ dir?: string, policy?: ReturnType<typeof loadPolicy>, transform?: (pathname: string, body: Buffer) => Buffer | null | undefined }} [options]
  */
 export function createBuildServer(options = {}) {
   const dir = resolve(root, options.dir ?? 'apps/portal/build');
+  const policy = options.policy ?? loadPolicy();
 
-  /** Arquivo que atende o caminho, ou `null` para 404. Rotas sem extensão caem no fallback SPA. */
+  /** Arquivo que atende o caminho, ou `null` para 404. */
   async function locate(pathname) {
     const clean = normalize(decodeURIComponent(pathname)).replace(/^[/\\]+/, '');
     const candidate = resolve(dir, clean);
     if (candidate !== dir && !candidate.startsWith(dir + sep)) return null;
-    if (clean && (await isFile(candidate))) return candidate;
-    if (await isFile(candidate + '.html')) return candidate + '.html';
-    if (await isFile(join(candidate, 'index.html'))) return join(candidate, 'index.html');
-    if (extname(clean) === '') return join(dir, '200.html');
-    return null;
+    if (clean === '')
+      return (await isFile(join(dir, 'index.html'))) ? join(dir, 'index.html') : null;
+    if (await isFile(candidate)) return candidate;
+    // Só rotas do app (regras `rewrites` do vercel.json): sem extensão e fora de /_app/.
+    const destination = rewriteFor(policy, pathname);
+    return destination ? join(dir, destination) : null;
   }
 
   return createServer(async (req, res) => {
@@ -78,7 +76,7 @@ export function createBuildServer(options = {}) {
       }
       const headers = {
         'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
-        'cache-control': cacheControl(pathname),
+        ...headersFor(policy, pathname),
       };
       if (options.transform) {
         const changed = options.transform(pathname, await readFile(file));

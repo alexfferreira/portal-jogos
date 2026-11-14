@@ -18,7 +18,8 @@
     "format": "prettier --write .",
     "check": "pnpm -r --if-present check",
     "serve": "node scripts/serve-build.mjs",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "report:size": "node scripts/report-size.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
