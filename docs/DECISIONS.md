@@ -37,3 +37,24 @@ Registro de decisões tomadas durante o desenvolvimento. Formato: data · decis�
 - Escopo de limpeza no `GameContext` (`ctx.dispose` para inscrições e `events.clear()`); `addMessages` não notifica a UI.
 - `demoGame` entra no bundle de quem importa `@recreio/core`; mover para subpath `@recreio/core/demo` quando a demo sair.
 - Fila de gravação em `settings.set` (hoje duas gravações seguidas não têm ordem garantida).
+
+## Marco 3 — Portal
+
+- **2026-11-14 · Perda de contexto WebGL:** o palco chama `preventDefault()` no `webglcontextlost` (sem isso o navegador não restaura), pausa o loop e, ao voltar, retoma. O three.js recria sozinho geometrias, texturas, programas e render targets (`onContextRestore`); o palco só marca os materiais para recompilar e redesenha. O `GameContext` converte isso nos eventos `graphics-lost` e `graphics-restored`. Se o contexto não voltar em 4 s, o portal oferece "Recarregar jogo" (remonta o jogo; o estado da fase em andamento se perde, o progresso salvo não). Validado no e2e com `WEBGL_lose_context`.
+- **2026-11-14 · Limpeza automática do `GameContext`:** `settings.subscribe` e `i18n.subscribe` do contexto são rastreados, e os palcos criados por `ctx.createStage` também. `ctx.dispose()` (chamado pelo `destroy` da instância devolvida por `Core.mountGame`) desfaz tudo na ordem inversa, limpa `events` e é idempotente. `ctx.onDestroy(fn)` registra limpezas extras. Falha no `mount` ou no `destroy` do jogo também limpa. Jogos devem ser montados por `core.mountGame`, não chamando `module.mount` direto.
+- **2026-11-14 · `ctx.createStage` agora é assíncrono** (`Promise<Stage>`): o Three.js é importado sob demanda e fica fora do bundle inicial (início: ~118 KB de JS; ao abrir o jogo carregam ~559 KB). Exige `sideEffects: false` em `core` e `games/*`.
+- **2026-11-14 · Metadados leves por jogo** (`@recreio/game-mistura/meta`): o portal lista cartões e traduções sem carregar o código do jogo; o módulo vem por `import()` ao abrir a rota. Registro de jogos em `apps/portal/src/lib/games.ts`.
+- **2026-11-14 · Contrato do HUD:** o jogo descreve `hud` (fase e power-ups) por evento; o portal desenha a barra e chama `instance.usePowerUp(id)`. `instance.next()` avança a fase depois do modal "Fase concluída".
+- **2026-11-14 · Mistura provisória:** `games/mistura` reaproveita a cena de demonstração do core (12 cubos; a fase "termina" com 12 toques) só para validar HUD, power-ups, modal e progresso. Será substituída nos marcos 4 e 5. A rota `/demo` foi removida.
+- **2026-11-14 · Fonte Nunito (Variable)** via `@fontsource-variable/nunito`, licença SIL OFL 1.1 (livre, arredondada, embutida no build para funcionar offline).
+- **2026-11-14 · UI compartilhada (`@recreio/ui`):** Svelte 5 com fontes `.svelte` exportadas direto (condição `svelte`), tokens em `theme.css`. Botões "brinquedo" com sombra inferior; o interruptor tem o botão inteiro com 44 px de altura (a área de toque é o próprio botão, não um pseudo-elemento).
+- **2026-11-14 · Instalação:** aviso discreto na tela inicial. Android usa `beforeinstallprompt` (só aparece com PWA instalável, marco 6); iPhone mostra "Compartilhar → Adicionar à Tela de Início" explicando o risco de apagarem o progresso. "Agora não" persiste no storage.
+- **2026-11-14 · Importar backup recarrega a página** depois de 1,2 s para aplicar configurações e serviços já carregados (pendência do marco 2 resolvida pelo caminho simples).
+- **2026-11-14 · Confirmação de reset é um modal do app** (nunca `window.confirm`); o e2e garante que nenhum diálogo nativo abre.
+- **2026-11-14 · Rotas:** `/`, `/jogo/[id]` (uma página pré-renderizada por jogo, ids desconhecidos mostram aviso) e `/configuracoes`.
+- **2026-11-14 · Qualidade ao vivo e materiais:** `setQuality` muda pixel ratio e sombras e recompila os materiais, mas **não troca** `MeshPhysicalMaterial` por `MeshStandardMaterial`; a versão simples dos materiais só vale no próximo mount (como o antialias). Se um jogo precisar trocar ao vivo, ele refaz os materiais ao ouvir `ctx.settings`.
+- **2026-11-14 · Aviso de gráficos presos só conta com a aba visível** e recomeça a contagem ao voltar: no celular o contexto cai em segundo plano e só volta quando o app reaparece.
+- **2026-11-14 · Modal:** o fundo fica `inert` enquanto aberto, o foco inicial é configurável (`initialFocus`) e os modais destrutivos (apagar progresso, importar backup) abrem com o foco em "Cancelar". Importar backup também pede confirmação, porque substitui o progresso.
+- **2026-11-14 · Seletor segmentado** usa botões com `aria-pressed` (não `role=radio`, que exigiria navegação por setas).
+- **2026-11-14 · Estado entregue ao IndexedDB não pode ser proxy do Svelte:** dados que vão para o storage usam `$state.raw` (bug achado pelo e2e do backup).
+- **2026-11-14 · Nome do jogo:** o título visível é "Mistura" (provisório, conforme a seção 0 da spec); "Mistura de cores" fica como descrição da mecânica.

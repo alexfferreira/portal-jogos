@@ -21,6 +21,7 @@ import {
 } from 'three';
 import type { Quality } from '../services/settings';
 import { Tweens } from '../tween';
+import { watchContext } from './contextGuard';
 import { fitOrthographic, fitPerspective, type Bounds } from './fit';
 
 export type CameraPreset = 'ortho-top' | 'perspective-tilted';
@@ -67,6 +68,15 @@ export interface Stage {
   /** Toque curto, sem arrastar. */
   onTap(fn: (p: PointerInfo) => void): () => void;
   onDrag(fn: (e: DragEvent) => void): () => void;
+  /** O contexto WebGL foi perdido (comum no celular ao voltar do segundo plano). O loop pausa sozinho. */
+  onContextLost(fn: () => void): () => void;
+  /**
+   * O contexto voltou. O palco já refez luzes, sombras e materiais e retomou o loop;
+   * um jogo que guarda recursos de GPU próprios (render targets, texturas) os refaz aqui.
+   */
+  onContextRestored(fn: () => void): () => void;
+  /** True enquanto o contexto está perdido. */
+  readonly contextLost: boolean;
   setBounds(bounds: Bounds): void;
   setQuality(quality: Quality): void;
   /** Pausa/retoma o loop (o loop também pausa sozinho com a aba oculta). */
@@ -264,8 +274,11 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
     }
     renderer.render(scene, camera);
   };
+  let contextLost = false;
+  const lostListeners = new Set<() => void>();
+  const restoredListeners = new Set<() => void>();
   const sync = (): void => {
-    const shouldRun = !manualPause && document.visibilityState !== 'hidden';
+    const shouldRun = !manualPause && !contextLost && document.visibilityState !== 'hidden';
     if (shouldRun === running) return;
     running = shouldRun;
     if (running) {
@@ -276,6 +289,29 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
     }
   };
   document.addEventListener('visibilitychange', sync);
+
+  // Perda de contexto: pausa o loop; ao voltar, o three recria o estado da GPU sozinho
+  // (geometrias, texturas, programas, render targets) e o loop retoma.
+  const stopWatchingContext = watchContext(canvas, {
+    onLost() {
+      contextLost = true;
+      sync();
+      for (const fn of [...lostListeners]) fn();
+    },
+    onRestored() {
+      contextLost = false;
+      scene.traverse((obj) => {
+        if (!(obj instanceof Mesh)) return;
+        const mats: Material[] = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of mats) m.needsUpdate = true;
+      });
+      applyQuality();
+      applyCamera();
+      sync();
+      redrawIfStopped();
+      for (const fn of [...restoredListeners]) fn();
+    },
+  });
 
   const observer = new ResizeObserver(resize);
   observer.observe(container);
@@ -303,6 +339,17 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
     onDrag(fn) {
       dragListeners.add(fn);
       return () => void dragListeners.delete(fn);
+    },
+    onContextLost(fn) {
+      lostListeners.add(fn);
+      return () => void lostListeners.delete(fn);
+    },
+    onContextRestored(fn) {
+      restoredListeners.add(fn);
+      return () => void restoredListeners.delete(fn);
+    },
+    get contextLost() {
+      return contextLost;
     },
     setBounds(next) {
       bounds = next;
@@ -344,6 +391,9 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
       manualPause = true;
       sync();
       document.removeEventListener('visibilitychange', sync);
+      stopWatchingContext();
+      lostListeners.clear();
+      restoredListeners.clear();
       observer.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);

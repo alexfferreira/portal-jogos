@@ -1,1 +1,2 @@
-export const MISTURA_ID = 'mistura';
+export { messages, meta, MISTURA_ID } from './meta';
+export { misturaGame } from './placeholder';

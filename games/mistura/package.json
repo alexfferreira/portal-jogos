@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./meta": "./src/meta.ts"
   },
   "scripts": {
     "check": "tsc --noEmit"
-  }
+  },
+  "dependencies": {
+    "@recreio/core": "workspace:*"
+  },
+  "sideEffects": false
 }

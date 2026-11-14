@@ -1,0 +1,34 @@
+/* Tema "brinquedo 3D": formas arredondadas, cores saturadas, sombras macias. */
+:root {
+  --bg-top: #cfe6ff;
+  --bg-bottom: #f1f7ff;
+  --surface: #ffffff;
+  --surface-2: #eef4ff;
+  --ink: #1b2b44;
+  --ink-soft: #5a6b85;
+  --primary: #1e63e0;
+  --primary-dark: #1749a8;
+  --accent: #fdd835;
+  --accent-dark: #c9a800;
+  --danger: #e53935;
+  --danger-dark: #a82523;
+  --ok: #1e9e4a;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 6px 18px rgb(27 43 68 / 14%);
+  --ease-pop: cubic-bezier(0.2, 0.9, 0.3, 1.25);
+  --font: 'Nunito Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tap: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ease-pop: linear;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

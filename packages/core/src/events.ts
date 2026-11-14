@@ -28,9 +28,33 @@ export class Emitter<Events extends object> {
   }
 }
 
+/** Um botão da barra de power-ups, descrito pelo jogo e desenhado pelo portal. */
+export interface PowerUpState {
+  id: string;
+  /** Chave i18n do rótulo. */
+  labelKey: string;
+  /** Nome de ícone do `@recreio/ui`. */
+  icon: string;
+  /** Usos restantes. */
+  count: number;
+  disabled?: boolean;
+}
+
+/** O que o jogo informa ao HUD comum do portal. */
+export interface HudState {
+  /** Fase atual (modo `levels`). */
+  level?: number;
+  powerUps: PowerUpState[];
+}
+
 /** Eventos que um jogo emite para o portal (seção 4.1). */
 export interface GameEvents {
   'level-complete': { level: number; stars?: number };
   'game-over': { score?: number };
   score: { score: number };
+  hud: HudState;
+  /** O contexto WebGL foi perdido; o palco pausa e tenta voltar sozinho. */
+  'graphics-lost': Record<string, never>;
+  /** O contexto WebGL voltou e a cena foi refeita. */
+  'graphics-restored': Record<string, never>;
 }

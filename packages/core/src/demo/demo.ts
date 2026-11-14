@@ -22,7 +22,7 @@ export const demoGame: GameModule = {
   },
 
   async mount(container, ctx): Promise<GameInstance> {
-    const stage: Stage = ctx.createStage(container, {
+    const stage: Stage = await ctx.createStage(container, {
       camera: 'perspective-tilted',
       bounds: { width: COLS * GAP, depth: ROWS * GAP },
     });

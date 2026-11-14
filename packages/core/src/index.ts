@@ -1,9 +1,9 @@
 export const CORE_VERSION = '0.1.0';
 
 export type { GameContext, GameInstance, GameMeta, GameModule } from './contract';
-export { createCore, type Core, type CoreOptions } from './core';
+export { createCore, type Core, type CoreOptions, type StageFactory } from './core';
 export { demoGame } from './demo/demo';
-export { Emitter, type GameEvents } from './events';
+export { Emitter, type GameEvents, type HudState, type PowerUpState } from './events';
 export {
   createI18n,
   DEFAULT_LOCALE,
