@@ -2,6 +2,8 @@
 export interface Bounds {
   width: number;
   depth: number;
+  /** Altura em Y; só usada pelo preset frontal (`ortho-front-tilted`). */
+  height?: number;
 }
 
 const DEG = Math.PI / 180;
@@ -36,4 +38,29 @@ export function fitPerspective(
   const distV = visibleDepth / 2 / tanHalf;
   const distH = bounds.width / 2 / (tanHalf * aspect);
   return Math.max(distV, distH) * margin;
+}
+
+/** Conteúdo em pé (plano XY, de frente): largura e altura, mais a espessura em Z. */
+export interface FrontBounds {
+  width: number;
+  height: number;
+  /** Espessura em Z; só pesa na inclinação. */
+  depth: number;
+}
+
+/**
+ * Câmera ortográfica frontal levemente inclinada (`tiltDeg` = quanto a câmera
+ * está acima do horizonte, olhando para o centro). A altura aparece encurtada pelo
+ * cosseno da inclinação e a espessura ganha um pouco de altura pelo seno.
+ */
+export function fitOrthoFront(
+  bounds: FrontBounds,
+  aspect: number,
+  tiltDeg: number,
+  margin = 1.04,
+): { halfWidth: number; halfHeight: number } {
+  const tilt = tiltDeg * DEG;
+  const visibleH = bounds.height * Math.cos(tilt) + bounds.depth * Math.sin(tilt);
+  const needH = Math.max(visibleH, bounds.width / aspect) * margin;
+  return { halfHeight: needH / 2, halfWidth: (needH * aspect) / 2 };
 }

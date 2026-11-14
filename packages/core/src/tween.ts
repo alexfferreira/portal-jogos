@@ -61,7 +61,8 @@ export class Tweens {
   }
 
   update(dt: number): void {
-    for (const tween of [...this.active]) {
+    // Itera o Set direto (sem cópia por quadro): remover durante a iteração é seguro.
+    for (const tween of this.active) {
       if (tween.done) continue;
       tween.elapsed += dt;
       if (tween.elapsed < 0) continue;

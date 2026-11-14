@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { collectErrors, openMistura } from './helpers';
+import { canvasData, collectErrors, openMistura, playMove, solutionFor } from './helpers';
 
 /** Perde o contexto WebGL do canvas atual, como o sistema faz ao tirar o app do segundo plano. */
 async function loseContext(page: Page): Promise<void> {
@@ -37,9 +37,13 @@ test('a cena volta sozinha quando o contexto WebGL é restaurado', async ({ page
   const after = (await stage.screenshot()).length;
   expect(after).toBeGreaterThan(before * 0.6);
 
-  // O jogo continua jogável: os power-ups seguem funcionando e a cena responde.
+  // O jogo continua jogável: uma jogada é aceita e o desfazer a devolve.
+  const initial = await canvasData(page, 'state');
+  await playMove(page, solutionFor(1)[0]!);
+  expect(await canvasData(page, 'state')).not.toBe(initial);
   await page.getByTestId('powerup-undo').click();
   await expect(page.getByTestId('powerup-undo-count')).toHaveText('4');
+  expect(await canvasData(page, 'state')).toBe(initial);
   expect(errors).toEqual([]);
 });
 
@@ -77,7 +81,7 @@ test('sem restauração o portal oferece recarregar o jogo', async ({ page }) =>
   await dialog.getByRole('button', { name: 'Recarregar jogo' }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('canvas')).toHaveCount(1);
-  await expect(page.getByTestId('powerup-undo-count')).toHaveText('5');
+  await expect(page.getByTestId('powerup-hint-count')).toHaveText('1');
   await page.waitForTimeout(500);
   const gameCanvasLive = await page.evaluate(() => {
     const c = document.querySelector('canvas')!;

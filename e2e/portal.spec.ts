@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { collectErrors, openMistura, playUntilLevelComplete } from './helpers';
+import { collectErrors, completeLevelWithSolver, openMistura, waitFrames } from './helpers';
 
 test('início mostra o cartão da Mistura com o progresso', async ({ page }) => {
   const errors = collectErrors(page);
@@ -17,12 +17,14 @@ test('jogo abre com HUD, power-ups e responde ao toque', async ({ page }) => {
   await expect(page.getByTestId('hud-level')).toHaveText('Fase 1');
   await expect(page.getByTestId('powerup-undo-count')).toHaveText('5');
   await expect(page.getByTestId('powerup-extraTube-count')).toHaveText('1');
-  await page.waitForTimeout(500);
+  await expect(page.getByTestId('powerup-hint-count')).toHaveText('1');
+  await waitFrames(page);
   await page.screenshot({ path: 'test-results/game-390x844.png' });
 
-  await page.getByTestId('powerup-undo').click();
-  await expect(page.getByTestId('powerup-undo-count')).toHaveText('4');
+  // Sem jogada feita, não há o que desfazer; o tubo extra gasta a única carga.
+  await expect(page.getByTestId('powerup-undo')).toBeDisabled();
   await page.getByTestId('powerup-extraTube').click();
+  await expect(page.getByTestId('powerup-extraTube-count')).toHaveText('0');
   await expect(page.getByTestId('powerup-extraTube')).toBeDisabled();
   expect(errors).toEqual([]);
 });
@@ -44,7 +46,7 @@ test('pausar abre o modal e Esc continua', async ({ page }) => {
 test('concluir a fase abre o modal, avança e o progresso persiste', async ({ page }) => {
   const errors = collectErrors(page);
   await openMistura(page);
-  await playUntilLevelComplete(page);
+  await completeLevelWithSolver(page, 1);
   const dialog = page.getByRole('dialog', { name: 'Fase concluída' });
   await expect(dialog).toContainText('Você completou a fase 1.');
   await page.screenshot({ path: 'test-results/level-complete-390x844.png' });

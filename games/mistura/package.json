@@ -13,7 +13,11 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@recreio/core": "workspace:*"
+    "@recreio/core": "workspace:*",
+    "three": "^0.187.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "devDependencies": {
+    "@types/three": "^0.187.0"
+  }
 }

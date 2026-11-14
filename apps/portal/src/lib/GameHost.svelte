@@ -17,6 +17,8 @@
   let paused = $state(false);
   let hud = $state<HudState>({ powerUps: [] });
   let completedLevel = $state<number>();
+  /** Preenchido enquanto o jogo está sem saída; `null` fecha o aviso. */
+  let noMoves = $state<{ canUndo: boolean; canAddTube: boolean } | null>(null);
   let graphicsLost = $state(false);
   let graphicsStuck = $state(false);
 
@@ -51,12 +53,16 @@
     status = 'loading';
     paused = false;
     completedLevel = undefined;
+    noMoves = null;
     hud = { powerUps: [] };
     clearGraphics();
 
     const ctx = core.gameContext(game.id);
     ctx.events.on('hud', (h) => (hud = h));
     ctx.events.on('level-complete', (e) => (completedLevel = e.level));
+    ctx.events.on('no-moves', (e) => {
+      noMoves = e.stuck ? { canUndo: e.canUndo, canAddTube: e.canAddTube } : null;
+    });
     ctx.events.on('graphics-lost', () => {
       graphicsLost = true;
       armStuckTimer();
@@ -102,11 +108,13 @@
   const restart = () => {
     instance?.restart();
     completedLevel = undefined;
+    noMoves = null;
     paused = false;
     instance?.resume();
   };
   const next = () => {
     completedLevel = undefined;
+    noMoves = null;
     instance?.next?.();
   };
   const exit = () => goto(resolve('/'));
@@ -148,6 +156,9 @@
         <Button onclick={start}>{t('game.retry')}</Button>
       </div>
     {/if}
+    <p class="message" role="status" aria-live="polite" data-testid="hud-message">
+      {#if hud.message}<span>{t(hud.message)}</span>{/if}
+    </p>
     {#if graphicsLost && !graphicsStuck}
       <p class="toast" role="status" data-testid="graphics-recovering">
         {t('graphics.recovering')}
@@ -187,6 +198,28 @@
   {#snippet actions()}
     <Button onclick={next}>{t('level.next')}</Button>
     <Button variant="ghost" onclick={exit}>{t('common.back')}</Button>
+  {/snippet}
+</Modal>
+
+<Modal open={noMoves !== null && status === 'playing' && !paused} title={t('nomoves.title')}>
+  <p>{t('nomoves.text')}</p>
+  {#snippet actions()}
+    {#if noMoves?.canUndo}
+      <Button onclick={() => instance?.usePowerUp?.('undo')}>
+        <Icon name="undo" />
+        {t('nomoves.undo')}
+      </Button>
+    {/if}
+    {#if noMoves?.canAddTube}
+      <Button variant="secondary" onclick={() => instance?.usePowerUp?.('extraTube')}>
+        <Icon name="plus" />
+        {t('nomoves.extraTube')}
+      </Button>
+    {/if}
+    <Button variant="ghost" onclick={restart}>
+      <Icon name="restart" />
+      {t('hud.restart')}
+    </Button>
   {/snippet}
 </Modal>
 
@@ -240,6 +273,28 @@
     margin: 0;
     color: var(--ink-soft);
     font-weight: 700;
+  }
+  .message {
+    position: absolute;
+    top: 8px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: 0 16px;
+    pointer-events: none;
+  }
+  .message span {
+    max-width: 340px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    box-shadow: var(--shadow);
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-align: center;
   }
   .toast {
     position: absolute;

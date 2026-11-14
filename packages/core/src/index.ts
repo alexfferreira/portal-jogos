@@ -32,7 +32,13 @@ export {
   type Settings,
   type SettingsStore,
 } from './services/settings';
-export { fitOrthographic, fitPerspective, type Bounds } from './stage/fit';
+export {
+  fitOrthoFront,
+  fitOrthographic,
+  fitPerspective,
+  type Bounds,
+  type FrontBounds,
+} from './stage/fit';
 export { createToyMaterial } from './stage/materials';
 export {
   createStage,

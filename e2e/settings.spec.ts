@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { collectErrors, openMistura, playUntilLevelComplete } from './helpers';
+import { collectErrors, completeLevelWithSolver, openMistura } from './helpers';
 
 async function openSettings(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
@@ -44,7 +44,7 @@ test('os controles têm área de toque de pelo menos 44 px', async ({ page }) =>
 test('exportar e importar o progresso (backup)', async ({ page }, testInfo) => {
   // Cria progresso: conclui a fase 1 e muda uma configuração.
   await openMistura(page);
-  await playUntilLevelComplete(page);
+  await completeLevelWithSolver(page, 1);
   await page.getByRole('button', { name: 'Próxima fase' }).click();
   await expect(page.getByTestId('hud-level')).toHaveText('Fase 2');
   await page.getByRole('button', { name: 'Voltar' }).click();
@@ -100,7 +100,7 @@ test('arquivo inválido não altera nada', async ({ page }, testInfo) => {
 
 test('reiniciar progresso pede confirmação dentro do app', async ({ page }) => {
   await openMistura(page);
-  await playUntilLevelComplete(page);
+  await completeLevelWithSolver(page, 1);
   await page.getByRole('button', { name: 'Próxima fase' }).click();
   await page.getByRole('button', { name: 'Voltar' }).click();
   await expect(page.getByTestId('progress-mistura')).toHaveText('Fase 2');

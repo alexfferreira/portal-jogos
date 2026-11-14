@@ -172,6 +172,9 @@ importers:
       '@playwright/test':
         specifier: ^1.65.0
         version: 1.65.0
+      '@recreio/game-mistura':
+        specifier: workspace:*
+        version: link:games/mistura
       eslint:
         specifier: ^10.14.0
         version: 10.14.0
@@ -242,6 +245,13 @@ importers:
       '@recreio/core':
         specifier: workspace:*
         version: link:../../packages/core
+      three:
+        specifier: ^0.187.0
+        version: 0.187.0
+    devDependencies:
+      '@types/three':
+        specifier: ^0.187.0
+        version: 0.187.0
 
   packages/core:
     dependencies:

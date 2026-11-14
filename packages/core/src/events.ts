@@ -45,6 +45,8 @@ export interface HudState {
   /** Fase atual (modo `levels`). */
   level?: number;
   powerUps: PowerUpState[];
+  /** Chave i18n de uma dica curta (ex.: tutorial) que o portal mostra sobre o palco. */
+  message?: string;
 }
 
 /** Eventos que um jogo emite para o portal (seção 4.1). */
@@ -53,6 +55,11 @@ export interface GameEvents {
   'game-over': { score?: number };
   score: { score: number };
   hud: HudState;
+  /**
+   * Situação "sem jogadas": `stuck: true` quando não há saída (o portal oferece opções);
+   * `stuck: false` quando a situação foi resolvida (o portal fecha o aviso).
+   */
+  'no-moves': { stuck: boolean; canUndo: boolean; canAddTube: boolean };
   /** O contexto WebGL foi perdido; o palco pausa e tenta voltar sozinho. */
   'graphics-lost': Record<string, never>;
   /** O contexto WebGL voltou e a cena foi refeita. */

@@ -22,9 +22,15 @@ import {
 import type { Quality } from '../services/settings';
 import { Tweens } from '../tween';
 import { watchContext } from './contextGuard';
-import { fitOrthographic, fitPerspective, type Bounds } from './fit';
+import { fitOrthoFront, fitOrthographic, fitPerspective, type Bounds } from './fit';
 
-export type CameraPreset = 'ortho-top' | 'perspective-tilted';
+/**
+ * - `ortho-top`: ortográfica de cima (plano XZ).
+ * - `perspective-tilted`: perspectiva inclinada (plano XZ).
+ * - `ortho-front-tilted`: ortográfica de frente, levemente inclinada (plano XY, em pé).
+ *   Usa `bounds.width` (X), `bounds.height` (Y) e `bounds.depth` (espessura em Z).
+ */
+export type CameraPreset = 'ortho-top' | 'perspective-tilted' | 'ortho-front-tilted';
 
 export interface StageOptions {
   camera: CameraPreset;
@@ -35,6 +41,8 @@ export interface StageOptions {
   background?: number;
   /** Elevação da câmera em perspectiva, em graus. */
   elevationDeg?: number;
+  /** Inclinação da câmera frontal (graus acima do horizonte). Padrão 8. */
+  tiltDeg?: number;
 }
 
 export interface PickHit {
@@ -65,6 +73,10 @@ export interface Stage {
   onFrame(fn: (dt: number) => void): () => void;
   /** Raycast com área de toque generosa. Procura entre `targets` (e seus filhos). */
   pick(x: number, y: number, targets: readonly Object3D[]): PickHit | null;
+  /** Tamanho atual do canvas em px (CSS). */
+  readonly size: { width: number; height: number };
+  /** Chamado depois de cada redimensionamento (câmera já ajustada). */
+  onResize(fn: (width: number, height: number) => void): () => void;
   /** Toque curto, sem arrastar. */
   onTap(fn: (p: PointerInfo) => void): () => void;
   onDrag(fn: (e: DragEvent) => void): () => void;
@@ -93,11 +105,15 @@ const TAP_RADIUS_PX = 22;
 /** Movimento (px) a partir do qual um toque vira arrasto. */
 const DRAG_THRESHOLD_PX = 8;
 const MAX_DT = 0.05;
+/** Limite do pixel ratio na qualidade alta (2 custa muito fill rate no celular). */
+const MAX_PIXEL_RATIO = 1.5;
 
 export function createStage(container: HTMLElement, opts: StageOptions): Stage {
   let quality: Quality = opts.quality ?? 'high';
   let bounds = opts.bounds;
   const elevationDeg = opts.elevationDeg ?? 62;
+  const tiltDeg = opts.tiltDeg ?? 8;
+  const front = opts.camera === 'ortho-front-tilted';
   const fov = 45;
 
   const renderer = new WebGLRenderer({ antialias: quality === 'high', alpha: false });
@@ -112,11 +128,13 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
   scene.add(new AmbientLight(0xffffff, 0.55));
   scene.add(new HemisphereLight(0xffffff, 0xb8c7e0, 0.6));
   const sun = new DirectionalLight(0xffffff, 1.6);
-  sun.position.set(4, 10, 6);
+  // De frente, a luz vem do alto, da esquerda e de perto da câmera.
+  if (front) sun.position.set(-4, 7, 10);
+  else sun.position.set(4, 10, 6);
   scene.add(sun);
 
   const camera =
-    opts.camera === 'ortho-top'
+    opts.camera !== 'perspective-tilted'
       ? new OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
       : new PerspectiveCamera(fov, 1, 0.1, 200);
 
@@ -124,29 +142,52 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
   const frameListeners = new Set<(dt: number) => void>();
   const tapListeners = new Set<(p: PointerInfo) => void>();
   const dragListeners = new Set<(e: DragEvent) => void>();
+  const resizeListeners = new Set<(w: number, h: number) => void>();
   const raycaster = new Raycaster();
   const ndc = new Vector2();
 
   let width = 1;
   let height = 1;
+  const sizeInfo = { width: 1, height: 1 };
 
   const applyQuality = (): void => {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : 1));
-    renderer.shadowMap.enabled = quality === 'high';
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, quality === 'high' ? MAX_PIXEL_RATIO : 1),
+    );
+    // O preset frontal não tem objetos que projetam sombra (usa sombra de contato falsa).
+    const shadows = quality === 'high' && !front;
+    renderer.shadowMap.enabled = shadows;
     renderer.shadowMap.type = PCFShadowMap;
-    sun.castShadow = quality === 'high';
-    if (sun.castShadow) {
-      sun.shadow.mapSize.set(1024, 1024);
-      const s = Math.max(bounds.width, bounds.depth);
-      Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s });
-      sun.shadow.camera.updateProjectionMatrix();
-    }
+    sun.castShadow = shadows;
+    if (shadows) sun.shadow.mapSize.set(1024, 1024);
+    applyShadowCamera();
     renderer.setSize(width, height, false);
+  };
+
+  const applyShadowCamera = (): void => {
+    if (!sun.castShadow) return;
+    const s = Math.max(bounds.width, bounds.depth);
+    Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s });
+    sun.shadow.camera.updateProjectionMatrix();
   };
 
   const applyCamera = (): void => {
     const aspect = width / height;
-    if (camera instanceof OrthographicCamera) {
+    if (camera instanceof OrthographicCamera && front) {
+      const { halfWidth, halfHeight } = fitOrthoFront(
+        { width: bounds.width, height: bounds.height ?? bounds.depth, depth: bounds.depth },
+        aspect,
+        tiltDeg,
+      );
+      camera.left = -halfWidth;
+      camera.right = halfWidth;
+      camera.top = halfHeight;
+      camera.bottom = -halfHeight;
+      const el = (tiltDeg * Math.PI) / 180;
+      camera.position.set(0, Math.sin(el) * 30, Math.cos(el) * 30);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(0, 0, 0);
+    } else if (camera instanceof OrthographicCamera) {
       const { halfWidth, halfHeight } = fitOrthographic(bounds, aspect);
       camera.left = -halfWidth;
       camera.right = halfWidth;
@@ -178,6 +219,7 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
     renderer.setSize(width, height, false);
     applyCamera();
     redrawIfStopped();
+    for (const fn of [...resizeListeners]) fn(width, height);
   };
 
   const pick: Stage['pick'] = (x, y, targets) => {
@@ -268,7 +310,7 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
     // Um erro num callback não pode matar o loop de animação.
     try {
       tweens.update(dt);
-      for (const fn of [...frameListeners]) fn(dt);
+      for (const fn of frameListeners) fn(dt);
     } catch (err) {
       console.error('[stage] erro no quadro', err);
     }
@@ -332,6 +374,15 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
       return () => void frameListeners.delete(fn);
     },
     pick,
+    get size() {
+      sizeInfo.width = width;
+      sizeInfo.height = height;
+      return sizeInfo;
+    },
+    onResize(fn) {
+      resizeListeners.add(fn);
+      return () => void resizeListeners.delete(fn);
+    },
     onTap(fn) {
       tapListeners.add(fn);
       return () => void tapListeners.delete(fn);
@@ -354,7 +405,7 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
     setBounds(next) {
       bounds = next;
       applyCamera();
-      applyQuality();
+      applyShadowCamera();
       redrawIfStopped();
     },
     setQuality(next) {
@@ -404,6 +455,7 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
       frameListeners.clear();
       tapListeners.clear();
       dragListeners.clear();
+      resizeListeners.clear();
       disposeObject(scene);
       if (scene.background instanceof Texture) scene.background.dispose();
       scene.clear();
