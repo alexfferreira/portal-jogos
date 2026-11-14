@@ -8,6 +8,9 @@ export default defineConfig({
       adapter: adapter({ fallback: '200.html' }),
       // Os e2e sobem `vite build` e `vite dev` ao mesmo tempo; cada um precisa do seu diretório
       // gerado, senão um pisa na saída do outro. Padrão: `.svelte-kit`.
+      // O registro do service worker é feito por `src/lib/sw.svelte.ts` (precisa saber de versões
+      // novas e ficar desligado no dev); por isso o registro automático do SvelteKit fica off.
+      serviceWorker: { register: false },
       outDir: process.env.SVELTEKIT_OUT_DIR ?? '.svelte-kit',
     }),
   ],

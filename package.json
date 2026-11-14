@@ -16,7 +16,9 @@
     "test:e2e": "playwright test",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "check": "pnpm -r --if-present check"
+    "check": "pnpm -r --if-present check",
+    "serve": "node scripts/serve-build.mjs",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

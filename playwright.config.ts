@@ -21,10 +21,11 @@ export default defineConfig({
     locale: 'pt-BR',
   },
   projects: [
-    // Suíte completa contra o site estático (o que vai para a Vercel).
+    // Suíte completa contra o site estático (o que vai para a Vercel), servido por
+    // scripts/serve-build.mjs: fallback SPA + 200.html, que o `vite preview` não tem.
     {
       name: 'build',
-      use: { baseURL: `http://localhost:${BUILD_PORT}` },
+      use: { baseURL: `http://127.0.0.1:${BUILD_PORT}` },
     },
     // Só o smoke do Worker contra o dev server (o Vite dev serve arquivos de outro jeito).
     {
@@ -35,8 +36,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `pnpm build && pnpm preview --port ${BUILD_PORT} --strictPort`,
-      url: `http://localhost:${BUILD_PORT}`,
+      command: `pnpm build && node scripts/serve-build.mjs --port ${BUILD_PORT}`,
+      url: `http://127.0.0.1:${BUILD_PORT}`,
       // VITE_E2E=1 liga os data-* de teste do canvas; um servidor reaproveitado poderia não tê-los.
       env: { VITE_E2E: '1' },
       reuseExistingServer: false,

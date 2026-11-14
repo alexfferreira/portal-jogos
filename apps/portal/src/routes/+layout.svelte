@@ -2,9 +2,13 @@
   import '@fontsource-variable/nunito';
   import '@recreio/ui/theme.css';
   import { app } from '#lib/app.svelte.ts';
-  import type { Snippet } from 'svelte';
+  import { registerServiceWorker } from '#lib/sw.svelte.ts';
+  import UpdateBanner from '#lib/UpdateBanner.svelte';
+  import { onMount, type Snippet } from 'svelte';
 
   let { children }: { children: Snippet } = $props();
+
+  onMount(registerServiceWorker);
 
   // O áudio só pode iniciar depois de um gesto do usuário.
   function unlockAudio() {
@@ -15,6 +19,7 @@
 <svelte:window onpointerdown={unlockAudio} onkeydown={unlockAudio} />
 
 {@render children()}
+<UpdateBanner />
 
 <style>
   :global(html, body) {

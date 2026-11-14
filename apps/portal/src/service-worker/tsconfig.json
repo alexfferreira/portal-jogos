@@ -1,0 +1,10 @@
+{
+  "extends": "$app/tsconfig/service-worker",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["$app/types"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.test.ts"]
+}
