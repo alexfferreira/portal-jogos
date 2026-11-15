@@ -31,6 +31,10 @@ export const portalMessages: Record<Locale, Dictionary> = {
     'graphics.stuck.text': 'O sistema parou os gráficos do jogo. Recarregue para continuar.',
     'graphics.reload': 'Recarregar jogo',
     'settings.sound': 'Som',
+    'settings.soundTest': 'Testar som',
+    'settings.soundTest.ok':
+      'O som tocou. Se você não ouviu, aumente o volume de mídia do aparelho e confira se ele não está no mudo.',
+    'settings.soundTest.blocked': 'O navegador bloqueou o som. Toque em Testar som de novo.',
     'settings.games': 'Jogos',
     'settings.backup': 'Backup',
     'settings.reset': 'Reiniciar progresso',
@@ -83,6 +87,10 @@ export const portalMessages: Record<Locale, Dictionary> = {
     'graphics.stuck.text': 'The system stopped the game graphics. Reload to continue.',
     'graphics.reload': 'Reload game',
     'settings.sound': 'Sound',
+    'settings.soundTest': 'Test sound',
+    'settings.soundTest.ok':
+      'The sound played. If you did not hear it, raise the media volume on your device and check that it is not muted.',
+    'settings.soundTest.blocked': 'The browser blocked the sound. Tap Test sound again.',
     'settings.games': 'Games',
     'settings.backup': 'Backup',
     'settings.reset': 'Reset progress',
@@ -136,6 +144,10 @@ export const portalMessages: Record<Locale, Dictionary> = {
     'graphics.stuck.text': 'El sistema detuvo los gráficos del juego. Recarga para continuar.',
     'graphics.reload': 'Recargar juego',
     'settings.sound': 'Sonido',
+    'settings.soundTest': 'Probar sonido',
+    'settings.soundTest.ok':
+      'El sonido se reprodujo. Si no lo oíste, sube el volumen multimedia del dispositivo y comprueba que no esté en silencio.',
+    'settings.soundTest.blocked': 'El navegador bloqueó el sonido. Toca Probar sonido de nuevo.',
     'settings.games': 'Juegos',
     'settings.backup': 'Copia de seguridad',
     'settings.reset': 'Reiniciar progreso',

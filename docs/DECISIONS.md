@@ -206,3 +206,11 @@ Nada foi publicado: só arquivos e documentação locais. Criar conta e projeto 
 - **Correção:** uma regra literal por arquivo (`/icon-192.png`, `/icon-512.png`, `/icon-maskable-512.png`, `/apple-touch-icon.png`, `/favicon.ico`, `/favicon.svg`), sem regex. O `vercel.json` não tem mais nenhum `|`.
 - **Como evitar de novo:** `@vercel/routing-utils` (o validador da própria Vercel) virou devDependency e `scripts/deploy.test.ts` roda o `vercel.json` nele; reproduzi o erro exato com o arquivo antigo e o arquivo novo passa. Outro teste proíbe `|` nos `source`.
 - **Root Directory:** a Vercel detecta o SvelteKit e sugere `apps/portal`; o README agora manda trocar para a raiz (`./`) e o preset para `Other`.
+
+### Som no celular: desbloqueio robusto e "Testar som" (2026-11-14)
+
+- **Relato do Alex:** no site publicado (celular), a vibração funciona e o som não sai.
+- **Investigação:** num Chromium com a política de autoplay real e toques de verdade, o áudio funcionava (contexto `running`, osciladores tocando), mas esse teste é mais permissivo que o Chrome do celular, então **a causa no aparelho não foi confirmada**. Achei fragilidades reais: o desbloqueio só rodava no `pointerdown` (no celular só `pointerup`/`touchend`/`click`/`keydown` contam como gesto); `play()` agendava tons numa linha do tempo parada quando o contexto estava suspenso; não havia como ver o estado.
+- **Correções:** o layout chama `audio.unlock()` em `pointerdown`, `pointerup`, `touchend`, `click` e `keydown`; `unlock()` retoma o contexto a cada gesto enquanto não estiver `running` e toca uma amostra silenciosa uma vez (iOS); `play()` com contexto suspenso retoma e toca só se voltar em até 400 ms (nunca em rajada tardia); `audio.status` (`none`/`running`/`suspended`/`interrupted`); ganho geral ×1,6 com compressor (blips curtos soam fracos no alto-falante do celular).
+- **Diagnóstico para o usuário:** Configurações → Som → **Testar som** toca um som dentro do toque e diz "tocou" (com a dica de volume de mídia/mudo) ou "o navegador bloqueou".
+- **Testes:** Vitest com `AudioContext` falso (desbloqueio, retomada, descarte de som tardio) e e2e que instrumenta o `AudioContext` e confirma osciladores ao selecionar/despejar e no botão de teste.

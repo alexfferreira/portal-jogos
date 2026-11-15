@@ -19,7 +19,9 @@ export { createRng, type Rng } from './rng';
 export {
   createAudio,
   SOUNDS,
+  type AudioOptions,
   type AudioService,
+  type AudioStatus,
   type SoundName,
   type Tone,
 } from './services/audio';

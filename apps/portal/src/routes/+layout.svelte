@@ -16,7 +16,15 @@
   }
 </script>
 
-<svelte:window onpointerdown={unlockAudio} onkeydown={unlockAudio} />
+<!-- No celular só pointerup/touchend/click/keydown contam como gesto para liberar o som; o
+     pointerdown não conta. Por isso todos chamam o unlock (barato e idempotente). -->
+<svelte:window
+  onpointerdown={unlockAudio}
+  onpointerup={unlockAudio}
+  ontouchend={unlockAudio}
+  onclick={unlockAudio}
+  onkeydown={unlockAudio}
+/>
 
 {@render children()}
 <UpdateBanner />

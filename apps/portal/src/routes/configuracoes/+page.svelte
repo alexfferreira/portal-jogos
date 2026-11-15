@@ -19,6 +19,20 @@
     { value: 'low' as Quality, label: t('settings.quality.low') },
   ]);
 
+  // --- teste de som ---
+  let soundTestMessage = $state('');
+
+  /** Toca um som dentro do gesto do toque e diz se o navegador deixou (ou bloqueou) o áudio. */
+  async function testSound() {
+    const audio = app.core?.audio;
+    if (!audio) return;
+    audio.unlock();
+    audio.play('complete');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    soundTestMessage =
+      audio.status === 'running' ? t('settings.soundTest.ok') : t('settings.soundTest.blocked');
+  }
+
   // --- backup ---
   let fileInput = $state<HTMLInputElement>();
   let message = $state('');
@@ -121,6 +135,8 @@
         checked={settings.vibration}
         onchange={(v) => set({ vibration: v })}
       />
+      <Button variant="secondary" onclick={testSound}>{t('settings.soundTest')}</Button>
+      <p class="hint" role="status" data-testid="sound-test">{soundTestMessage}</p>
     </section>
 
     <section>
