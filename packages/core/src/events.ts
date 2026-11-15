@@ -58,8 +58,15 @@ export interface GameEvents {
   /**
    * Situação "sem jogadas": `stuck: true` quando não há saída (o portal oferece opções);
    * `stuck: false` quando a situação foi resolvida (o portal fecha o aviso).
+   * `reason`: `'stuck'` = nenhuma jogada válida; `'unsolvable'` = ainda há jogadas, mas a
+   * posição não tem mais solução (padrão: `'stuck'`).
    */
-  'no-moves': { stuck: boolean; canUndo: boolean; canAddTube: boolean };
+  'no-moves': {
+    stuck: boolean;
+    canUndo: boolean;
+    canAddTube: boolean;
+    reason?: 'stuck' | 'unsolvable';
+  };
   /** O contexto WebGL foi perdido; o palco pausa e tenta voltar sozinho. */
   'graphics-lost': Record<string, never>;
   /** O contexto WebGL voltou e a cena foi refeita. */

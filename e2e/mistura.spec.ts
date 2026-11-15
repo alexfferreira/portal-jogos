@@ -15,7 +15,7 @@ import {
   waitFrames,
   waitIdle,
 } from './helpers';
-import { findStuckSequence } from './stuck';
+import { findDeadEndSequence, findStuckSequence } from './stuck';
 
 test('a cena renderiza sem erros e mostra o tutorial da fase 1', async ({ page }) => {
   const errors = collectErrors(page);
@@ -318,6 +318,53 @@ test.describe('sem jogadas', () => {
     await dialog.getByRole('button', { name: 'Reiniciar' }).click();
     await expect(dialog).toBeHidden();
     expect(await canvasData(page, 'state')).toBe(initial);
+    await expectViewMatchesState(page);
+  });
+});
+
+test.describe('beco sem saída (ainda há jogadas, mas não há solução)', () => {
+  const setup = findDeadEndSequence();
+
+  async function reachDeadEnd(page: Page): Promise<string> {
+    await seedLevel(page, setup!.level);
+    await openMistura(page);
+    let beforeLast = await canvasData(page, 'state');
+    for (const [i, m] of setup!.moves.entries()) {
+      if (i === setup!.moves.length - 1) beforeLast = await canvasData(page, 'state');
+      await playMove(page, m);
+    }
+    await expect(page.getByRole('dialog', { name: 'Sem saída' })).toBeVisible();
+    return beforeLast;
+  }
+
+  test('o aviso abre sozinho e oferece desfazer, tubo extra e reiniciar, nessa ordem', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    expect(setup).not.toBeNull();
+    await reachDeadEnd(page);
+    const dialog = page.getByRole('dialog', { name: 'Sem saída' });
+    const names = await dialog.getByRole('button').allTextContents();
+    expect(names.map((n) => n.trim())).toEqual(['Desfazer', 'Tubo extra', 'Reiniciar']);
+    await page.screenshot({ path: 'test-results/mistura-sem-saida-390x844.png' });
+
+    const tubes = Number(await canvasData(page, 'tube-count'));
+    await dialog.getByRole('button', { name: 'Tubo extra' }).click();
+    expect(await canvasData(page, 'tube-count')).toBe(String(tubes + 1));
+    // O tubo extra já foi usado: se a posição continuar sem solução, ele não é mais oferecido.
+    await page.waitForTimeout(500);
+    if (await dialog.isVisible()) {
+      await expect(dialog.getByRole('button', { name: 'Tubo extra' })).toHaveCount(0);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('desfazer fecha o aviso e devolve a jogada', async ({ page }) => {
+    const beforeLast = await reachDeadEnd(page);
+    const dialog = page.getByRole('dialog', { name: 'Sem saída' });
+    await dialog.getByRole('button', { name: 'Desfazer' }).click();
+    // A posição anterior pode também ser um beco: nesse caso o aviso volta.
+    expect(await canvasData(page, 'state')).toBe(beforeLast);
     await expectViewMatchesState(page);
   });
 });

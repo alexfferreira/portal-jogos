@@ -18,7 +18,11 @@
   let hud = $state<HudState>({ powerUps: [] });
   let completedLevel = $state<number>();
   /** Preenchido enquanto o jogo está sem saída; `null` fecha o aviso. */
-  let noMoves = $state<{ canUndo: boolean; canAddTube: boolean } | null>(null);
+  let noMoves = $state<{
+    canUndo: boolean;
+    canAddTube: boolean;
+    deadEnd: boolean;
+  } | null>(null);
   let graphicsLost = $state(false);
   let graphicsStuck = $state(false);
 
@@ -61,7 +65,13 @@
     ctx.events.on('hud', (h) => (hud = h));
     ctx.events.on('level-complete', (e) => (completedLevel = e.level));
     ctx.events.on('no-moves', (e) => {
-      noMoves = e.stuck ? { canUndo: e.canUndo, canAddTube: e.canAddTube } : null;
+      noMoves = e.stuck
+        ? {
+            canUndo: e.canUndo,
+            canAddTube: e.canAddTube,
+            deadEnd: e.reason === 'unsolvable',
+          }
+        : null;
     });
     ctx.events.on('graphics-lost', () => {
       graphicsLost = true;
@@ -201,8 +211,11 @@
   {/snippet}
 </Modal>
 
-<Modal open={noMoves !== null && status === 'playing' && !paused} title={t('nomoves.title')}>
-  <p>{t('nomoves.text')}</p>
+<Modal
+  open={noMoves !== null && status === 'playing' && !paused}
+  title={t(noMoves?.deadEnd ? 'nomoves.deadend.title' : 'nomoves.title')}
+>
+  <p>{t(noMoves?.deadEnd ? 'nomoves.deadend.text' : 'nomoves.text')}</p>
   {#snippet actions()}
     {#if noMoves?.canUndo}
       <Button onclick={() => instance?.usePowerUp?.('undo')}>

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseState } from './notation';
 import { canonicalKey, hint, searchMoves, solve } from './solver';
-import { applyMove, isWin } from './state';
+import { generateLevel } from './generator';
+import { applyMove, isStuck, isWin, legalMoves } from './state';
 import type { Move, State } from './types';
 
 function replay(state: State, moves: readonly Move[]): State {
@@ -81,5 +82,36 @@ describe('hint', () => {
   it('sem jogada quando já venceu ou não há saída', () => {
     expect(hint(parseState('0 0 | 1 1', 2)).move).toBeNull();
     expect(hint(parseState('0 1 | 1 0', 2))).toMatchObject({ status: 'unsolvable', move: null });
+  });
+});
+
+describe('beco sem saída com jogadas legais', () => {
+  /** Joga jogadas (pseudo)aleatórias fixas até a posição perder a solução sem travar. */
+  function findDeadEnd(): State | null {
+    for (let level = 1; level <= 20; level++) {
+      for (let t = 0; t < 5; t++) {
+        let s = generateLevel(level).state;
+        let r = (level * 31 + t * 7) | 1;
+        for (let i = 0; i < 40 && !isWin(s); i++) {
+          const moves = legalMoves(s);
+          if (moves.length === 0) break;
+          r = (r * 1103515245 + 12345) & 0x7fffffff;
+          const a = applyMove(s, moves[r % moves.length] as Move);
+          if (a.ok) s = a.state;
+        }
+        if (!isWin(s) && !isStuck(s) && hint(s).status === 'unsolvable') return s;
+      }
+    }
+    return null;
+  }
+
+  it('existe, tem jogadas legais, a dica é "unsolvable" e sem jogada sugerida', () => {
+    const s = findDeadEnd();
+    expect(s).not.toBeNull();
+    expect(legalMoves(s as State).length).toBeGreaterThan(0);
+    expect(isStuck(s as State)).toBe(false);
+    const h = hint(s as State);
+    expect(h.status).toBe('unsolvable');
+    expect(h.move).toBeNull();
   });
 });

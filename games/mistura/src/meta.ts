@@ -21,6 +21,7 @@ export const messages: Record<Locale, Dictionary> = {
     'mistura.canvas.label': 'Tabuleiro com tubos de líquidos coloridos',
     'mistura.error.generate':
       'Não foi possível criar a próxima fase. Toque em Reiniciar para tentar de novo.',
+    'mistura.hint.limit': 'Não achei uma dica agora. Tente de novo.',
     'mistura.tutorial.select': 'Toque em um tubo para pegar o líquido de cima.',
     'mistura.tutorial.pour': 'Agora toque em outro tubo para despejar.',
     'mistura.tutorial.cancel': 'Toque no mesmo tubo de novo para cancelar.',
@@ -34,6 +35,7 @@ export const messages: Record<Locale, Dictionary> = {
     'mistura.powerup.hint': 'Hint',
     'mistura.canvas.label': 'Board with tubes of colored liquids',
     'mistura.error.generate': 'Could not create the next level. Tap Restart to try again.',
+    'mistura.hint.limit': 'Could not find a hint right now. Try again.',
     'mistura.tutorial.select': 'Tap a tube to pick up the liquid on top.',
     'mistura.tutorial.pour': 'Now tap another tube to pour.',
     'mistura.tutorial.cancel': 'Tap the same tube again to cancel.',
@@ -48,6 +50,7 @@ export const messages: Record<Locale, Dictionary> = {
     'mistura.canvas.label': 'Tablero con tubos de líquidos de colores',
     'mistura.error.generate':
       'No se pudo crear el siguiente nivel. Toca Reiniciar para intentarlo de nuevo.',
+    'mistura.hint.limit': 'No encontré una pista ahora. Inténtalo de nuevo.',
     'mistura.tutorial.select': 'Toca un tubo para tomar el líquido de arriba.',
     'mistura.tutorial.pour': 'Ahora toca otro tubo para verter.',
     'mistura.tutorial.cancel': 'Toca el mismo tubo otra vez para cancelar.',

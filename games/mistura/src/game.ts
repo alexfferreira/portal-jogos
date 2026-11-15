@@ -98,7 +98,8 @@ export const misturaGame: GameModule = {
     let moving = false;
     let paused = false;
     let destroyed = false;
-    let stuckShown = false;
+    /** Aviso "sem jogadas" aberto no momento (e por quê); `null` = fechado. */
+    let stuckReason: 'stuck' | 'unsolvable' | null = null;
     let hintPending = false;
     let activeHint: Move | null = null;
     let handKey = '';
@@ -109,6 +110,8 @@ export const misturaGame: GameModule = {
     /** Fase cuja geração falhou (tentar de novo pelo Reiniciar ou por novo `next`). */
     let failedTarget: number | null = null;
     let errorKey: string | null = null;
+    /** Aviso passageiro da dica ("não achei"); some na próxima mudança de estado. */
+    let hintNoteKey: string | null = null;
 
     // --- HUD e diagnóstico ----------------------------------------------------------
 
@@ -142,7 +145,7 @@ export const misturaGame: GameModule = {
         },
       ];
       const hud: HudState = { level, powerUps };
-      const message = errorKey ?? currentStep().message;
+      const message = errorKey ?? hintNoteKey ?? currentStep().message;
       if (message) hud.message = message;
       ctx.events.emit('hud', hud);
     };
@@ -205,6 +208,7 @@ export const misturaGame: GameModule = {
     /** Qualquer mudança de estado: descarta dica velha e atualiza HUD/diagnóstico. */
     const stateChanged = (): void => {
       version++;
+      hintNoteKey = null;
       if (activeHint) {
         activeHint = null;
         board.setHint(null);
@@ -213,20 +217,58 @@ export const misturaGame: GameModule = {
       ensureRoute();
     };
 
-    const updateStuck = (): void => {
-      const stuck = !won && !busy && session.stuck;
-      if (stuck) {
-        const r = session.remaining;
-        stuckShown = true;
-        ctx.events.emit('no-moves', {
-          stuck: true,
-          canUndo: session.canUndo && r.undo > 0,
-          canAddTube: r.extraTube > 0,
-        });
-      } else if (stuckShown) {
-        stuckShown = false;
-        ctx.events.emit('no-moves', { stuck: false, canUndo: false, canAddTube: false });
+    const showNoMoves = (reason: 'stuck' | 'unsolvable'): void => {
+      const r = session.remaining;
+      stuckReason = reason;
+      ctx.events.emit('no-moves', {
+        stuck: true,
+        canUndo: session.canUndo && r.undo > 0,
+        canAddTube: r.extraTube > 0,
+        reason,
+      });
+    };
+
+    const closeNoMoves = (): void => {
+      if (stuckReason === null) return;
+      stuckReason = null;
+      ctx.events.emit('no-moves', { stuck: false, canUndo: false, canAddTube: false });
+    };
+
+    /**
+     * Beco sem saída: ainda há jogadas legais, mas o solver prova que não há solução.
+     * Usa a mesma chave `hint` do Worker, então não roda junto com uma dica pedida pelo
+     * jogador nem no tutorial (que tem o próprio roteiro).
+     */
+    const checkDeadEnd = async (): Promise<void> => {
+      // Com dica pendente, o `finally` de `requestHint` refaz a checagem se o estado mudou.
+      if (hintPending) return;
+      const v = version;
+      const e = epoch;
+      try {
+        const res = await client.hint(session.state);
+        if (destroyed || v !== version || e !== epoch || won || busy) return;
+        if (res.status === 'unsolvable') showNoMoves('unsolvable');
+        else closeNoMoves();
+      } catch (err) {
+        if (!(err instanceof CancelledError)) {
+          console.error('[mistura] falha ao checar a fase', err);
+          if (v === version && e === epoch) closeNoMoves();
+        }
       }
+    };
+
+    const updateStuck = (): void => {
+      if (!won && !busy && session.stuck) {
+        showNoMoves('stuck');
+        return;
+      }
+      // Um aviso de "sem saída" fica aberto até a nova checagem responder (evita piscar
+      // ao usar tubo extra ou desfazer numa posição que continua sem solução).
+      const keepOpen = stuckReason === 'unsolvable' && !won && !busy && !hasTutorial(level);
+      // Se continua aberto, atualiza as opções (ex.: o tubo extra acabou de ser usado).
+      if (keepOpen) showNoMoves('unsolvable');
+      else closeNoMoves();
+      if (!won && !busy && !hasTutorial(level)) void checkDeadEnd();
     };
 
     // --- fim de fase ----------------------------------------------------------------
@@ -285,6 +327,7 @@ export const misturaGame: GameModule = {
       hintPending = false;
       handKey = '';
       board.setState(gen.state);
+      closeNoMoves();
       stateChanged();
       updateStuck();
       startPrefetch();
@@ -410,7 +453,13 @@ export const misturaGame: GameModule = {
       try {
         const res = await client.hint(session.state);
         // O estado mudou enquanto o Worker pensava: a dica é velha, descarta sem gastar a carga.
-        if (destroyed || v !== version || e !== epoch || !res.move) return;
+        if (destroyed || v !== version || e !== epoch) return;
+        if (!res.move) {
+          // Sem dica: não gasta a carga e explica o motivo.
+          if (res.status === 'unsolvable') showNoMoves('unsolvable');
+          else if (res.status === 'limit') hintNoteKey = 'mistura.hint.limit';
+          return;
+        }
         if (!session.spendHint()) return;
         activeHint = res.move;
         board.setHint(res.move);
@@ -419,7 +468,11 @@ export const misturaGame: GameModule = {
         if (!(err instanceof CancelledError)) console.error('[mistura] falha na dica', err);
       } finally {
         hintPending = false;
-        if (!destroyed) refreshStep();
+        if (!destroyed) {
+          refreshStep();
+          // O jogador jogou durante a dica: o estado novo ainda não foi checado.
+          if (v !== version && e === epoch && !won && !busy) updateStuck();
+        }
       }
     };
 
@@ -444,6 +497,7 @@ export const misturaGame: GameModule = {
       handKey = '';
       route = hasTutorial(level) ? [...initialRoute] : null;
       board.setState(state);
+      closeNoMoves();
       stateChanged();
       updateStuck();
     };

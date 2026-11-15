@@ -214,3 +214,12 @@ Nada foi publicado: só arquivos e documentação locais. Criar conta e projeto 
 - **Correções:** o layout chama `audio.unlock()` em `pointerdown`, `pointerup`, `touchend`, `click` e `keydown`; `unlock()` retoma o contexto a cada gesto enquanto não estiver `running` e toca uma amostra silenciosa uma vez (iOS); `play()` com contexto suspenso retoma e toca só se voltar em até 400 ms (nunca em rajada tardia); `audio.status` (`none`/`running`/`suspended`/`interrupted`); ganho geral ×1,6 com compressor (blips curtos soam fracos no alto-falante do celular).
 - **Diagnóstico para o usuário:** Configurações → Som → **Testar som** toca um som dentro do toque e diz "tocou" (com a dica de volume de mídia/mudo) ou "o navegador bloqueou".
 - **Testes:** Vitest com `AudioContext` falso (desbloqueio, retomada, descarte de som tardio) e e2e que instrumenta o `AudioContext` e confirma osciladores ao selecionar/despejar e no botão de teste.
+
+## Correção: beco sem saída e dica muda
+
+- **Problema:** o jogador chegava a posições sem solução que ainda tinham jogadas legais. `isStuck` só olha "zero jogadas", então nada avisava, e a dica (`res.move === null`) voltava em silêncio.
+- **Beco sem saída:** depois de cada mudança de estado (jogada, desfazer, tubo extra, fase nova) o jogo pede ao Worker a busca do estado atual (mesma chamada da dica). Se o resultado for `unsolvable`, emite `no-moves { stuck: true, reason: 'unsolvable' }`. O modal do portal troca título e texto ("Sem saída") e mantém as ações **Desfazer, Tubo extra (se ainda houver carga), Reiniciar**, nessa ordem. `limit` (busca estourou o tempo) não avisa nada, para nunca declarar derrota sem prova.
+- **Pula a checagem** no tutorial (fases 1–2, têm roteiro próprio) e enquanto uma dica do jogador está em andamento (a chave `hint` do cliente cancela o pedido anterior).
+- **Dica:** `unsolvable` abre o mesmo modal; `limit` mostra a mensagem `mistura.hint.limit` no HUD. Nos dois casos a carga da dica **não** é gasta.
+- **Evento:** `reason?: 'stuck' | 'unsolvable'` (padrão `'stuck'`), compatível com o que já existia.
+- **Revisão (ajustes):** o aviso "sem saída" fica aberto enquanto a nova checagem roda (sem piscar ao usar tubo extra/desfazer) e tem as opções atualizadas; se o jogador joga durante uma dica pendente, o estado novo é checado quando a dica termina; fase nova/reinício fecham o aviso. O texto diz "Sem ajuda, esta posição não tem solução", pois o solver ignora power-ups. Não há debounce da checagem: cada pedido novo substitui o que está na fila; medir em celular real se pesar.
