@@ -1,3 +1,4 @@
+export { playOrder, randomPlayoutWinRate, type PlayOutcome } from './difficulty';
 export { rectsOverlap, sweepRect, type Rect } from './geometry';
 export {
   buildGeometry,
