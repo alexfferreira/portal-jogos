@@ -29,14 +29,16 @@ interface Look {
   axles: number[];
 }
 
-const LOOKS: Record<VehicleKind, Look> = {
+export const LOOKS: Record<VehicleKind, Look> = {
   car: { body: 0.28, cabin: 0.2, cabinLength: 0.5, cabinShift: -0.06, axles: [-0.3, 0.3] },
   van: { body: 0.38, cabin: 0.22, cabinLength: 0.6, cabinShift: -0.1, axles: [-0.3, 0.3] },
   bus: { body: 0.5, cabin: 0.2, cabinLength: 0.9, cabinShift: 0, axles: [-0.32, 0, 0.32] },
 };
 
-const WHEEL_RADIUS = 0.1;
+export const WHEEL_RADIUS = 0.1;
 const WHEEL_WIDTH = 0.08;
+/** Caixa da seta no teto (em X relativa ao centro da cabine; meia-largura em Z). */
+export const ARROW_BOX = { minX: -0.22, maxX: 0.26, halfWidth: 0.15 } as const;
 const DARK = 0x2f3640;
 const LIGHT = 0xffffff;
 
