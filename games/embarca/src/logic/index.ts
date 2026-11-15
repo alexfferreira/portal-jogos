@@ -24,6 +24,7 @@ export {
   type UndoOutcome,
 } from './session';
 export { CLEARANCE, placeVehicles, type PlacedVehicle } from './placement';
+export { buildColorsAndQueue, type ColorPlan } from './queue';
 export { mixSeed } from './seed';
 export {
   canonicalKey,
