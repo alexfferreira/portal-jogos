@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createLevel, DEFAULT_SLOT_COUNT, VEHICLE_SPECS } from './level';
 import { level, veh } from './testkit';
+import { cos, sin, TRIG_SCALE } from './trig';
 
 const zeros = (n: number): number[] => Array.from({ length: n }, () => 0);
 
@@ -46,6 +47,37 @@ describe('createLevel: bloqueios', () => {
     });
     expect(l.obstructed).toEqual([true]);
     expect(l.blockers).toEqual([[]]);
+  });
+});
+
+describe('createLevel: bloqueios em ângulos quebrados', () => {
+  it('um carro logo atrás, a 23°, não bloqueia o da frente (sem bloqueio mútuo)', () => {
+    const l = level([veh('car', 0, 5000, 5000, 23), veh('car', 0, 3895, 4531, 23)], zeros(8));
+    expect(l.blockers).toEqual([[], [0]]);
+  });
+
+  it('em todos os 360 ângulos: o de trás é bloqueado pelo da frente e nunca o contrário', () => {
+    for (let a = 0; a < 360; a++) {
+      const dx = Math.round((1205 * cos(a)) / TRIG_SCALE); // 1200 de comprimento + folga de 5
+      const dy = Math.round((1205 * sin(a)) / TRIG_SCALE);
+      const l = level(
+        [veh('car', 0, 5000, 5000, a), veh('car', 0, 5000 - dx, 5000 - dy, a)],
+        zeros(8),
+      );
+      expect(l.blockers, `ângulo ${a}`).toEqual([[], [0]]);
+    }
+  });
+
+  it('em todos os 360 ângulos: vizinhos paralelos com folga de 5 milésimos não se bloqueiam', () => {
+    for (let a = 0; a < 360; a++) {
+      const nx = -Math.round((605 * sin(a)) / TRIG_SCALE); // 600 de largura + folga de 5
+      const ny = Math.round((605 * cos(a)) / TRIG_SCALE);
+      const l = level(
+        [veh('car', 0, 5000, 5000, a), veh('car', 0, 5000 + nx, 5000 + ny, a)],
+        zeros(8),
+      );
+      expect(l.blockers, `ângulo ${a}`).toEqual([[], []]);
+    }
   });
 });
 

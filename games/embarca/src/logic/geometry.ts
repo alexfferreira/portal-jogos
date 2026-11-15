@@ -40,15 +40,19 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
 }
 
 /**
- * O retângulo que `r` varre ao andar `distance` (inteiro par, > 0) na direção de `angle`:
- * mesma largura, comprimento estendido e centro deslocado para a frente.
+ * A região à frente do centro de `r`: do centro até a frente do veículo mais `distance`
+ * (`hl + distance` precisa ser par para o resultado ser inteiro).
+ *
+ * Começa no centro, e não na traseira, de propósito: como o veículo inicial nunca se sobrepõe
+ * a outro, a metade de trás não pode conter bloqueador, e assim o arredondamento do centro
+ * (de 1 a 2 milésimos) nunca faz um veículo logo atrás parecer estar no caminho.
  */
 export function sweepRect(r: Rect, distance: number): Rect {
-  const half = distance / 2;
+  const half = (r.hl + distance) / 2;
   return {
     cx: r.cx + Math.round((half * cos(r.angle)) / TRIG_SCALE),
     cy: r.cy + Math.round((half * sin(r.angle)) / TRIG_SCALE),
-    hl: r.hl + half,
+    hl: half,
     hw: r.hw,
     angle: r.angle,
   };

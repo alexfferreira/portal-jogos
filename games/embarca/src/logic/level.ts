@@ -116,7 +116,8 @@ export function createLevel(input: LevelInput): Level {
   const obstructed: boolean[] = [];
   vehicles.forEach((v, i) => {
     const raw = width + height + VEHICLE_SPECS[v.kind].length;
-    const swept = sweepRect(rects[i] as Rect, raw + (raw % 2));
+    const rect = rects[i] as Rect;
+    const swept = sweepRect(rect, raw + ((raw + rect.hl) % 2)); // hl + distância par
     blockers.push(rects.flatMap((r, j) => (j !== i && rectsOverlap(swept, r) ? [j] : [])));
     obstructed.push(obstacleRects.some((o) => rectsOverlap(swept, o)));
   });

@@ -38,12 +38,13 @@ describe('rectsOverlap', () => {
 });
 
 describe('sweepRect', () => {
-  it('varre para +x com ângulo 0', () => {
-    expect(sweepRect(r(1000, 1000, 600, 300, 0), 4000)).toEqual(r(3000, 1000, 2600, 300, 0));
+  it('varre para +x com ângulo 0, a partir do centro', () => {
+    // do centro (x=1000) até a frente (1600) + 4000 = 5600: comprimento 4600, centro em 3300
+    expect(sweepRect(r(1000, 1000, 600, 300, 0), 4000)).toEqual(r(3300, 1000, 2300, 300, 0));
   });
 
-  it('varre para +y com ângulo 90', () => {
-    expect(sweepRect(r(1000, 1000, 600, 300, 90), 4000)).toEqual(r(1000, 3000, 2600, 300, 90));
+  it('varre para +y com ângulo 90, a partir do centro', () => {
+    expect(sweepRect(r(1000, 1000, 600, 300, 90), 4000)).toEqual(r(1000, 3300, 2300, 300, 90));
   });
 
   it('bloqueia à frente, não atrás e não na faixa vizinha com folga', () => {
