@@ -132,6 +132,8 @@ export class Board {
   private readonly hand = new Hand();
   private confetti: Confetti | null = null;
   private handVehicle: number | null = null;
+  /** Veículo da dica mostrada no momento (para sobreviver a uma jogada recusada). */
+  private hintVehicle: number | null = null;
   private clock = 0;
   private colorblind = false;
   private atlas: SymbolAtlas | null = null;
@@ -330,6 +332,7 @@ export class Board {
   /** Dica, mão e confete somem a qualquer mudança de estado ou de fase. */
   private clearOverlays(): void {
     this.hintRing.hide();
+    this.hintVehicle = null;
     this.hand.hide();
     this.handVehicle = null;
     if (this.confetti) {
@@ -364,8 +367,10 @@ export class Board {
     const v = vehicleId === null ? undefined : this.level?.vehicles[vehicleId];
     if (center === null || v === undefined || !this.shownOnBoard.includes(vehicleId as number)) {
       this.hintRing.hide();
+      this.hintVehicle = null;
       return;
     }
+    this.hintVehicle = vehicleId;
     this.hintRing.show(center, VEHICLE_SPECS[v.kind].length / 2 / UNIT + 0.4);
   }
 
@@ -473,7 +478,16 @@ export class Board {
     onDone: () => void,
   ): void {
     this.finishAnimations();
-    this.hintRing.hide();
+    // Uma jogada aceita muda o estado e apaga a dica; uma recusada (bate e volta) não: a dica
+    // que o jogador já gastou continua valendo, e é restaurada ao reconciliar o visual.
+    const keepHint = result.ok ? null : this.hintVehicle;
+    if (result.ok) {
+      this.hintRing.hide();
+      this.hintVehicle = null;
+    }
+    const restoreHint = (): void => {
+      if (keepHint !== null) this.setHint(keepHint);
+    };
     const layout = this.layout;
     if (this.level === null || layout === null) {
       onDone();
@@ -482,6 +496,7 @@ export class Board {
     const plan = planMove(before, move, result, layout);
     if (plan.steps.length === 0) {
       this.applyState(after);
+      restoreHint();
       onDone();
       return;
     }
@@ -492,6 +507,7 @@ export class Board {
       if (remaining > 0) return;
       for (const f of flyers) this.queue?.recycleFlyer(f);
       this.applyState(after);
+      restoreHint();
       onDone();
     };
     for (const step of plan.steps) this.runStep(step, flyers, stepDone);

@@ -51,6 +51,34 @@ describe('Board: dica e mãozinha', () => {
     expect(board.hasHint).toBe(false);
   });
 
+  it('a dica sobrevive a uma jogada recusada (bate e volta), na animação e depois dela', () => {
+    const { board, state, stage } = setup();
+    board.setHint(3); // van livre
+    const r = applyMove(state, { vehicle: 0 }); // o carro 0 está bloqueado pelo 1
+    if (r.ok) throw new Error('deveria recusar');
+    board.playMove(state, { vehicle: 0 }, r, state, () => {});
+    stage.tweens.update(0.1);
+    expect(board.hasHint).toBe(true); // durante a batida
+    board.finishAnimations();
+    expect(board.hasHint).toBe(true); // e depois dela
+    const layout = computeLayout(scenario);
+    const v = scenario.vehicles[3]!;
+    const w = layout.toWorld(v.cx, v.cy);
+    const ring = stage.scene.getObjectByName('hint-ring')!;
+    expect(ring.position.x).toBeCloseTo(w.x);
+    expect(ring.position.z).toBeCloseTo(w.z);
+  });
+
+  it('a dica sobrevive também a um veículo que não existe', () => {
+    const { board, state } = setup();
+    board.setHint(3);
+    const r = applyMove(state, { vehicle: 99 });
+    if (r.ok) throw new Error('deveria recusar');
+    board.playMove(state, { vehicle: 99 }, r, state, () => {});
+    board.finishAnimations();
+    expect(board.hasHint).toBe(true);
+  });
+
   it('o anel fica no centro do veículo da dica', () => {
     const { board, stage } = setup();
     board.setHint(2);
