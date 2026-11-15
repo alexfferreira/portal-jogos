@@ -38,7 +38,15 @@ export interface PathPoint {
 }
 
 export type Step =
-  | { kind: 'drive'; vehicle: number; path: PathPoint[]; duration: number; delay: number }
+  | {
+      kind: 'drive';
+      vehicle: number;
+      /** Vaga em que o veículo estaciona. */
+      slot: number;
+      path: PathPoint[];
+      duration: number;
+      delay: number;
+    }
   | {
       kind: 'board';
       passenger: number;
@@ -188,6 +196,7 @@ export function planMove(
     {
       kind: 'drive',
       vehicle: move.vehicle,
+      slot: result.slot,
       path: [{ x: start.x, z: start.z, heading }, { x: exit.x, z: exit.z, heading }, ...curve],
       duration: driveDuration,
       delay: 0,
