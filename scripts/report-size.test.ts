@@ -1,13 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error módulo .mjs sem tipos
 import { computeReport } from './report-size.mjs';
 
 /**
  * Orçamentos de tamanho sobre o build gerado (pulado se não houver build). Medido em 2026-11-14:
- * tela inicial 47,1 KB gzip de JS; jogo sob demanda 160,1 + 3,6 KB; worker 3,1 KB. Os tetos têm
+ * tela inicial 47,1 KB gzip de JS; jogo sob demanda 160,1 + 3,6 KB; worker 3,1 KB. Com a Embarca
+ * (2026-11-15): tela inicial 48,1 KB; jogo 178,6 + 3,6 KB; um Worker por jogo, o da Embarca com
+ * ~5,2 KB gzip (gerador e solver). Os tetos têm
  * ~50% de folga: pegam regressões grandes (ex.: Three.js entrando na tela inicial) sem ficar frágeis.
  */
 const buildDir = fileURLToPath(new URL('../apps/portal/build', import.meta.url));
@@ -44,7 +47,8 @@ describe.skipIf(!hasBuild)('orçamentos de tamanho do build', () => {
     expect(report.initial.js.files).toBeGreaterThan(5);
     expect(report.gameRoute.js.files).toBeGreaterThan(0);
     expect(report.onDemand.js.files).toBeGreaterThan(0);
-    expect(report.worker.js.files).toBe(1);
+    // Um Worker por jogo (Mistura e Embarca).
+    expect(report.worker.js.files).toBe(2);
   });
 
   it('JS da tela inicial abaixo de 70 KB gzip e CSS abaixo de 8 KB gzip', () => {
@@ -66,11 +70,17 @@ describe.skipIf(!hasBuild)('orçamentos de tamanho do build', () => {
     }
   });
 
-  it('o Worker é pequeno (abaixo de 6 KB gzip) e não carrega three nem idb', () => {
-    expect(report.worker.js.gzip).toBeLessThan(6 * KB);
-    expect(report.worker.js.raw).toBeLessThan(14 * KB);
-    const code = readFileSync(join(buildDir, report.worker.list[0]!), 'utf8');
-    expect(code).not.toMatch(/WebGLRenderer|PerspectiveCamera|indexedDB|three/i);
+  it('cada Worker é pequeno (abaixo de 6 KB gzip) e não carrega three nem idb', () => {
+    const files = report.worker.list.filter((f) => f.endsWith('.js'));
+    expect(files).toHaveLength(2);
+    for (const f of files) {
+      const bytes = readFileSync(join(buildDir, f));
+      expect(gzipSync(bytes, { level: 9 }).length, f).toBeLessThan(6 * KB);
+      expect(bytes.length, f).toBeLessThan(14 * KB);
+      expect(bytes.toString('utf8'), f).not.toMatch(
+        /WebGLRenderer|PerspectiveCamera|indexedDB|three/i,
+      );
+    }
   });
 
   it('fontes: no máximo 200 KB no total (só os subconjuntos usados são baixados)', () => {
