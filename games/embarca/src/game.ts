@@ -9,7 +9,8 @@ import { createLevelLoader } from './levelLoader';
 import { Session, type GeneratedLevel, type State } from './logic';
 import { EMBARCA_ID, messages, meta } from './meta';
 import { Board } from './render/board';
-import { createLogicClient, type LogicClient } from './worker';
+import { hasTutorial } from './render/tutorial';
+import { CancelledError, createLogicClient, type LogicClient } from './worker';
 
 /** Enquadramento provisório até a primeira fase ser montada. */
 const INITIAL_BOUNDS = { width: 6.6, depth: 14 };
@@ -120,6 +121,13 @@ export const embarcaGame: GameModule = {
     /** Fase cuja geração falhou (tentar de novo pelo Reiniciar ou por novo `next`). */
     let failedTarget: number | null = null;
     let errorKey: string | null = null;
+    /** Muda a cada mudança de estado: descarta dicas e checagens calculadas para um estado velho. */
+    let version = 0;
+    let hintPending = false;
+    /** Veículo que a dica está mostrando, ou `null`. */
+    let activeHint: number | null = null;
+    /** Aviso passageiro da dica ("não achei"); some na próxima mudança de estado. */
+    let hintNoteKey: string | null = null;
 
     // --- HUD e diagnóstico ----------------------------------------------------------
 
@@ -146,11 +154,12 @@ export const embarcaGame: GameModule = {
           labelKey: 'embarca.powerup.hint',
           icon: 'bulb',
           count: r.hint,
-          disabled: locked,
+          disabled: locked || hintPending,
         },
       ];
       const hud: HudState = { level, powerUps };
-      if (errorKey !== null) hud.message = errorKey;
+      const message = errorKey ?? hintNoteKey;
+      if (message !== null) hud.message = message;
       ctx.events.emit('hud', hud);
     };
 
@@ -161,10 +170,17 @@ export const embarcaGame: GameModule = {
       ds.won = String(won);
       ds.bumps = String(session.bumps);
       ds.slots = String(session.state.slots.length);
+      ds.hint = activeHint === null ? '' : String(activeHint);
     };
 
     /** Qualquer mudança de estado: HUD e dados de teste em dia. */
     const stateChanged = (): void => {
+      version++;
+      hintNoteKey = null;
+      if (activeHint !== null) {
+        activeHint = null;
+        board.setHint(null);
+      }
       emitHud();
       syncDataset();
     };
@@ -188,12 +204,40 @@ export const embarcaGame: GameModule = {
       ctx.events.emit('no-moves', { stuck: false, canUndo: false, canAddTube: false });
     };
 
+    /**
+     * Beco sem saída: ainda há jogadas legais, mas o solver prova que não há solução. Usa a mesma
+     * chave `hint` do Worker, então não roda junto com uma dica do jogador nem nas fases do
+     * tutorial (que têm o próprio roteiro).
+     */
+    const checkDeadEnd = async (): Promise<void> => {
+      // Com dica pendente, o `finally` de `requestHint` refaz a checagem se o estado mudou.
+      if (hintPending || hasTutorial(level)) return;
+      const v = version;
+      const e = epoch;
+      try {
+        const res = await client.hint(session.state);
+        if (destroyed || v !== version || e !== epoch || won || busy) return;
+        if (res.status === 'unsolvable') showNoMoves('unsolvable');
+        else closeNoMoves();
+      } catch (err) {
+        if (!(err instanceof CancelledError)) {
+          console.error('[embarca] falha ao checar a fase', err);
+          if (v === version && e === epoch) closeNoMoves();
+        }
+      }
+    };
+
     const updateStuck = (): void => {
       if (!won && !busy && session.stuck) {
         showNoMoves('stuck');
         return;
       }
-      closeNoMoves();
+      // Um aviso de "sem saída" fica aberto até a nova checagem responder (evita piscar ao
+      // usar a vaga extra ou desfazer numa posição que continua sem solução).
+      const check = !won && !busy && !hasTutorial(level);
+      if (stuckReason === 'unsolvable' && check) showNoMoves('unsolvable');
+      else closeNoMoves();
+      if (check) void checkDeadEnd();
     };
 
     // --- fim de fase ----------------------------------------------------------------
@@ -239,6 +283,7 @@ export const embarcaGame: GameModule = {
       busy = false;
       failedTarget = null;
       errorKey = null;
+      hintPending = false;
       board.setLevel(gen.state.level, session.state);
       closeNoMoves();
       stateChanged();
@@ -287,6 +332,39 @@ export const embarcaGame: GameModule = {
 
     // --- power-ups ------------------------------------------------------------------
 
+    const requestHint = async (): Promise<void> => {
+      if (hintPending || session.remaining.hint <= 0) return;
+      hintPending = true;
+      emitHud();
+      const v = version;
+      const e = epoch;
+      try {
+        const res = await client.hint(session.state);
+        // O estado mudou enquanto o Worker pensava: a dica é velha, descarta sem gastar a carga.
+        if (destroyed || v !== version || e !== epoch) return;
+        if (!res.move) {
+          // Sem dica: não gasta a carga e explica o motivo.
+          if (res.status === 'unsolvable') showNoMoves('unsolvable');
+          else if (res.status === 'limit') hintNoteKey = 'embarca.hint.limit';
+          return;
+        }
+        if (!session.spendHint()) return;
+        activeHint = res.move.vehicle;
+        board.setHint(activeHint);
+        ctx.audio.play('click');
+      } catch (err) {
+        if (!(err instanceof CancelledError)) console.error('[embarca] falha na dica', err);
+      } finally {
+        hintPending = false;
+        if (!destroyed) {
+          emitHud();
+          syncDataset();
+          // O jogador jogou durante a dica: o estado novo ainda não foi checado.
+          if (v !== version && e === epoch && !won && !busy) updateStuck();
+        }
+      }
+    };
+
     const undo = (): void => {
       const out = session.undo();
       if (!out.ok) return;
@@ -329,6 +407,7 @@ export const embarcaGame: GameModule = {
       loader.invalidate();
       errorKey = null;
       epoch++;
+      hintPending = false;
       const state = session.restart();
       won = false;
       busy = false;
@@ -367,6 +446,7 @@ export const embarcaGame: GameModule = {
         if (busy || won) return;
         if (id === 'undo') undo();
         else if (id === 'extraSlot') extraSlot();
+        else if (id === 'hint') void requestHint();
       },
       destroy() {
         if (destroyed) return;

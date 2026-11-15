@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { createState, generateLevel, isFree } from '@recreio/game-embarca/logic';
+import { createState, generateLevel, hint, isFree } from '@recreio/game-embarca/logic';
 import { canvasData, collectErrors, waitFrames, waitIdle } from './helpers';
 import {
   expectViewMatchesState,
+  findDeadEndSequence,
   findStuckSequence,
   openEmbarca,
   playSolution,
@@ -300,5 +301,99 @@ test.describe('sem jogadas: ações do painel', () => {
     await expect(dialog).toBeHidden();
     expect(await canvasData(page, 'slots')).toBe('5');
     expect(errors).toEqual([]);
+  });
+});
+
+test.describe('dica', () => {
+  test('mostra o veículo sugerido, gasta a carga e some na primeira jogada', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    // A dica é a primeira jogada da solução que o solver acha a partir do estado atual.
+    const suggested = hint(generateLevel(1).state).move!.vehicle;
+    expect(await canvasData(page, 'hint')).toBe('');
+    await page.getByTestId('powerup-hint').click();
+    await expect.poll(() => canvasData(page, 'hint')).toBe(String(suggested));
+    await expect(page.getByTestId('powerup-hint-count')).toHaveText('0');
+    await page.screenshot({ path: 'test-results/embarca-dica-390x844.png' });
+    await tapVehicle(page, suggested);
+    await waitIdle(page);
+    expect(await canvasData(page, 'hint')).toBe('');
+    expect(errors).toEqual([]);
+  });
+
+  test('a carga só some quando a dica foi mostrada (nunca fica sem dica e sem carga)', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    const first = generateLevel(1).solution[0]!.vehicle;
+    await page.getByTestId('powerup-hint').click();
+    await tapVehicle(page, first); // joga sem esperar a resposta da dica
+    await waitIdle(page);
+    await page.waitForTimeout(1500);
+    const hint = await canvasData(page, 'hint');
+    const count = await page.getByTestId('powerup-hint-count').textContent();
+    // Dica mostrada e depois apagada pela jogada: a carga foi gasta. Dica descartada por ser
+    // velha: a carga continua. Nunca "sem dica e sem carga" sem o jogador ter visto a dica.
+    expect(hint).toBe('');
+    expect(['0', '1']).toContain(count);
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('sem saída (ainda há jogadas, mas não há solução)', () => {
+  const setup = findDeadEndSequence();
+
+  async function reachDeadEnd(page: import('@playwright/test').Page): Promise<string> {
+    await seedEmbarcaLevel(page, setup!.level);
+    await openEmbarca(page);
+    let beforeLast = await canvasData(page, 'state');
+    for (const [i, m] of setup!.moves.entries()) {
+      if (i === setup!.moves.length - 1) beforeLast = await canvasData(page, 'state');
+      await tapVehicle(page, m.vehicle);
+      await waitIdle(page);
+    }
+    await expect(page.getByRole('dialog', { name: 'Sem saída' })).toBeVisible({ timeout: 20_000 });
+    return beforeLast;
+  }
+
+  test('o aviso abre sozinho e oferece Desfazer, Vaga extra e Reiniciar, nessa ordem', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    expect(setup).not.toBeNull();
+    await reachDeadEnd(page);
+    const dialog = page.getByRole('dialog', { name: 'Sem saída' });
+    const names = (await dialog.getByRole('button').allTextContents()).map((n) => n.trim());
+    expect(names).toEqual(['Desfazer', 'Vaga extra', 'Reiniciar']);
+    await page.screenshot({ path: 'test-results/embarca-sem-saida-390x844.png' });
+    await dialog.getByRole('button', { name: 'Vaga extra' }).click();
+    await expect.poll(() => canvasData(page, 'slots')).toBe('5');
+    // A vaga extra já foi usada: se a posição continuar sem solução, ela não é mais oferecida.
+    await page.waitForTimeout(800);
+    if (await dialog.isVisible()) {
+      await expect(dialog.getByRole('button', { name: 'Vaga extra' })).toHaveCount(0);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('Desfazer fecha o aviso e devolve a última jogada', async ({ page }) => {
+    const beforeLast = await reachDeadEnd(page);
+    const dialog = page.getByRole('dialog', { name: 'Sem saída' });
+    await dialog.getByRole('button', { name: 'Desfazer' }).click();
+    // A posição anterior pode também ser um beco: nesse caso o aviso volta.
+    await expect.poll(() => canvasData(page, 'state')).toBe(beforeLast);
+    await expectViewMatchesState(page);
+  });
+
+  test('nas fases do tutorial a checagem não abre o aviso (a fase 1 conclui normalmente)', async ({
+    page,
+  }) => {
+    await openEmbarca(page);
+    await playSolution(page, 1);
+    await expect(page.getByRole('dialog', { name: 'Fase concluída' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('dialog', { name: 'Sem saída' })).toHaveCount(0);
   });
 });

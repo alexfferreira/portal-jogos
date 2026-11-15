@@ -3,6 +3,7 @@ import {
   applyMove,
   createState,
   generateLevel,
+  hint,
   isStuck,
   isWin,
   legalMoves,
@@ -146,6 +147,7 @@ export function findStuckSequence(
       let state = initial;
       let r = (level * 7919 + p * 104729) | 1;
       const moves: Move[] = [];
+      let deadEnd = false;
       while (moves.length < maxMoves && !isWin(state) && !isStuck(state)) {
         const options = legalMoves(state);
         r = (Math.imul(r, 1103515245) + 12345) & 0x7fffffff;
@@ -154,12 +156,56 @@ export function findStuckSequence(
         if (!result.ok) break;
         moves.push(move);
         state = result.state;
+        // Nenhum passo intermediário pode ser um beco sem solução: o aviso "Sem saída" abriria
+        // no meio do caminho e bloquearia os toques seguintes.
+        if (!isStuck(state) && !isWin(state) && hint(state).status === 'unsolvable') {
+          deadEnd = true;
+          break;
+        }
       }
-      if (isStuck(state) && (best === null || moves.length < best.moves.length)) {
+      if (!deadEnd && isStuck(state) && (best === null || moves.length < best.moves.length)) {
         best = { level, moves };
       }
     }
     if (best !== null && best.moves.length <= 5) break;
+  }
+  return best;
+}
+
+/**
+ * Procura, de forma determinística, a sequência mais curta de jogadas legais que termina numa
+ * posição **não travada e sem solução** (ainda há jogadas, mas o solver prova que nenhuma
+ * vence). Percorre as fases de `from` a `to`; as fases do tutorial (1 e 2) não checam isso.
+ */
+export function findDeadEndSequence(
+  from = 3,
+  to = 40,
+  playouts = 300,
+  maxMoves = 14,
+): StuckSetup | null {
+  let best: StuckSetup | null = null;
+  for (let level = from; level <= to; level++) {
+    const initial = createState(generateLevel(level).state.level);
+    for (let p = 0; p < playouts; p++) {
+      let state = initial;
+      let r = (level * 6007 + p * 92821) | 1;
+      const moves: Move[] = [];
+      while (moves.length < maxMoves && !isWin(state) && !isStuck(state)) {
+        const options = legalMoves(state);
+        r = (Math.imul(r, 1103515245) + 12345) & 0x7fffffff;
+        const move = options[r % options.length] as Move;
+        const result = applyMove(state, move);
+        if (!result.ok) break;
+        moves.push(move);
+        state = result.state;
+        if (!isWin(state) && !isStuck(state) && hint(state).status === 'unsolvable') {
+          if (best === null || moves.length < best.moves.length)
+            best = { level, moves: [...moves] };
+          break;
+        }
+      }
+    }
+    if (best !== null && best.moves.length <= 4) break;
   }
   return best;
 }
