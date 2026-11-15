@@ -1,0 +1,16 @@
+{
+  "name": "@recreio/game-embarca",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./logic": "./src/logic/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@recreio/core": "workspace:*"
+  },
+  "sideEffects": false
+}

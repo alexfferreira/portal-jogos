@@ -36,28 +36,30 @@ Entradas que a spec implica e nenhuma task testaria sozinha; cada linha tem o te
 
 Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
 
-| Arquivo | Responsabilidade |
-|---|---|
-| `package.json`, `tsconfig.json` | Pacote do workspace (copiar o molde de `games/mistura`, só `./logic` exportado) |
-| `src/logic/types.ts` | Tipos públicos (veículo, fase, estado, jogadas, resultados) |
-| `src/logic/trig.ts` | Tabela inteira de seno/cosseno e `normalizeAngle` |
-| `src/logic/geometry.ts` | Retângulo girado, sobreposição (SAT inteiro), varredura |
-| `src/logic/level.ts` | `VEHICLE_SPECS`, `createLevel` (validação + grafo de bloqueios) |
-| `src/logic/state.ts` | Estado inicial, `applyMove`, `legalMoves`, vitória/derrota, vaga extra |
-| `src/logic/session.ts` | `Session`: estado + desfazer + power-ups + batidas |
-| `src/logic/testkit.ts` | Helpers de teste (não exportado no `index.ts`) |
-| `src/logic/index.ts` | Exportações públicas |
-| `*.test.ts` ao lado de cada arquivo | Testes |
+| Arquivo                             | Responsabilidade                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| `package.json`, `tsconfig.json`     | Pacote do workspace (copiar o molde de `games/mistura`, só `./logic` exportado) |
+| `src/logic/types.ts`                | Tipos públicos (veículo, fase, estado, jogadas, resultados)                     |
+| `src/logic/trig.ts`                 | Tabela inteira de seno/cosseno e `normalizeAngle`                               |
+| `src/logic/geometry.ts`             | Retângulo girado, sobreposição (SAT inteiro), varredura                         |
+| `src/logic/level.ts`                | `VEHICLE_SPECS`, `createLevel` (validação + grafo de bloqueios)                 |
+| `src/logic/state.ts`                | Estado inicial, `applyMove`, `legalMoves`, vitória/derrota, vaga extra          |
+| `src/logic/session.ts`              | `Session`: estado + desfazer + power-ups + batidas                              |
+| `src/logic/testkit.ts`              | Helpers de teste (não exportado no `index.ts`)                                  |
+| `src/logic/index.ts`                | Exportações públicas                                                            |
+| `*.test.ts` ao lado de cada arquivo | Testes                                                                          |
 
 ---
 
 ### Task 1: Pacote, tipos e tabela trigonométrica
 
 **Files:**
+
 - Create: `games/embarca/package.json`, `games/embarca/tsconfig.json`, `games/embarca/src/logic/types.ts`, `games/embarca/src/logic/trig.ts`
 - Test: `games/embarca/src/logic/trig.test.ts`
 
 **Interfaces:**
+
 - Produces (`types.ts`):
   - `type VehicleKind = 'car' | 'van' | 'bus'`
   - `interface Vehicle { readonly id: number; readonly kind: VehicleKind; readonly seats: number; readonly color: number; readonly hidden: boolean; readonly cx: number; readonly cy: number; readonly angle: number }` (`color` = índice na `PALETTE` do core; `angle` em 0..359 = direção da seta e do bico do veículo, anti-horário a partir de +x, y para cima)
@@ -83,8 +85,8 @@ Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
   - `sin(-90) === sin(270)` e `cos(450) === cos(90)` (a função normaliza internamente)
 - [ ] **Step 3: Rodar o teste e ver falhar.** Run: `pnpm vitest run games/embarca/src/logic/trig.test.ts` — Expected: FAIL (módulo não existe).
 - [ ] **Step 4: Escrever `types.ts` (tipos acima, com comentários em português) e `trig.ts`.** A tabela `SIN_0_90` é **literal embutida** (91 inteiros, `sin(d)×10000` arredondado, de `d=0` a `90`):
-  `0, 175, 349, 523, 698, 872, 1045, 1219, 1392, 1564, 1736, 1908, 2079, 2250, 2419, 2588, 2756, 2924, 3090, 3256, 3420, 3584, 3746, 3907, 4067, 4226, 4384, 4540, 4695, 4848, 5000, 5150, 5299, 5446, 5592, 5736, 5878, 6018, 6157, 6293, 6428, 6561, 6691, 6820, 6947, 7071, 7193, 7314, 7431, 7547, 7660, 7771, 7880, 7986, 8090, 8192, 8290, 8387, 8480, 8572, 8660, 8746, 8829, 8910, 8988, 9063, 9135, 9205, 9272, 9336, 9397, 9455, 9511, 9563, 9613, 9659, 9703, 9744, 9781, 9816, 9848, 9877, 9903, 9925, 9945, 9962, 9976, 9986, 9994, 9998, 10000`.
-  Os demais quadrantes saem por simetria (`sin(180−d)=sin(d)`, `sin(180+d)=−sin(d)`, `sin(360−d)=−sin(d)`); `cos(d)=sin(d+90)`. Nada de `Math.sin`/`Math.cos` no módulo.
+      `0, 175, 349, 523, 698, 872, 1045, 1219, 1392, 1564, 1736, 1908, 2079, 2250, 2419, 2588, 2756, 2924, 3090, 3256, 3420, 3584, 3746, 3907, 4067, 4226, 4384, 4540, 4695, 4848, 5000, 5150, 5299, 5446, 5592, 5736, 5878, 6018, 6157, 6293, 6428, 6561, 6691, 6820, 6947, 7071, 7193, 7314, 7431, 7547, 7660, 7771, 7880, 7986, 8090, 8192, 8290, 8387, 8480, 8572, 8660, 8746, 8829, 8910, 8988, 9063, 9135, 9205, 9272, 9336, 9397, 9455, 9511, 9563, 9613, 9659, 9703, 9744, 9781, 9816, 9848, 9877, 9903, 9925, 9945, 9962, 9976, 9986, 9994, 9998, 10000`.
+      Os demais quadrantes saem por simetria (`sin(180−d)=sin(d)`, `sin(180+d)=−sin(d)`, `sin(360−d)=−sin(d)`); `cos(d)=sin(d+90)`. Nada de `Math.sin`/`Math.cos` no módulo.
 - [ ] **Step 5: Rodar o teste e ver passar; rodar `pnpm --filter @recreio/game-embarca check` e `pnpm lint`.** Expected: tudo verde.
 - [ ] **Step 6: Commit** — `git add games/embarca pnpm-lock.yaml` · "Embarca: pacote, tipos e tabela trigonométrica inteira".
 
@@ -93,10 +95,12 @@ Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
 ### Task 2: Geometria (retângulo girado, sobreposição, varredura)
 
 **Files:**
+
 - Create: `games/embarca/src/logic/geometry.ts`
 - Test: `games/embarca/src/logic/geometry.test.ts`
 
 **Interfaces:**
+
 - Consumes: `sin`, `cos`, `TRIG_SCALE` de `./trig`.
 - Produces:
   - `interface Rect { readonly cx: number; readonly cy: number; readonly hl: number; readonly hw: number; readonly angle: number }` (`hl` = meio-comprimento ao longo de `angle`, `hw` = meia-largura; tudo inteiro, em milésimos; `angle` já normalizado)
@@ -123,10 +127,12 @@ Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
 ### Task 3: Fase (`createLevel`) e grafo de bloqueios
 
 **Files:**
+
 - Create: `games/embarca/src/logic/level.ts`, `games/embarca/src/logic/testkit.ts`
 - Test: `games/embarca/src/logic/level.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Rect`, `rectsOverlap`, `sweepRect` de `./geometry`; `normalizeAngle` de `./trig`; tipos de `./types`.
 - Produces (`level.ts`):
   - `const VEHICLE_SPECS: Record<VehicleKind, { seats: number; length: number; width: number }>` = `car {4, 1200, 600}`, `van {6, 1600, 700}`, `bus {10, 2400, 800}` (milésimos; `length` ao longo da seta)
@@ -157,10 +163,12 @@ Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
 ### Task 4: Estado, jogadas, fila e derrota
 
 **Files:**
+
 - Create: `games/embarca/src/logic/state.ts`
 - Test: `games/embarca/src/logic/state.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Level`, `State`, `Move`, `MoveResult`, `Slot` de `./types`; `level`/`veh` de `./testkit` (testes).
 - Produces:
   - `function createState(level: Level): State` — todos os veículos em `onBoard`, `slots` com `slotCount` posições `null`, `queueIndex: 0`, `waiting: []`.
@@ -199,10 +207,12 @@ Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
 ### Task 5: Sessão (desfazer, vaga extra, dica, batidas)
 
 **Files:**
+
 - Create: `games/embarca/src/logic/session.ts`, `games/embarca/src/logic/index.ts`
 - Test: `games/embarca/src/logic/session.test.ts`
 
 **Interfaces:**
+
 - Consumes: `UndoStack` de `@recreio/core/puzzle`; `applyMove`, `addSlot`, `createState`, `isStuck`, `isWin` de `./state`.
 - Produces (`session.ts`), no molde de `games/mistura/src/logic/session.ts`:
   - `type PowerUpKind = 'undo' | 'extraSlot' | 'hint'`; `interface PowerUps { readonly undo: number; readonly extraSlot: number; readonly hint: number }`; `const POWERUPS_PER_LEVEL: PowerUps = { undo: 5, extraSlot: 1, hint: 1 }`
@@ -233,10 +243,12 @@ Todos em `games/embarca/` (pacote novo). Cada arquivo tem uma responsabilidade:
 ### Task 6: Fechamento do marco (determinismo, decisões, verificação)
 
 **Files:**
+
 - Create: `games/embarca/src/logic/scenario.test.ts`
 - Modify: `docs/DECISIONS.md` (nova seção "Embarca — Marco 1")
 
 **Interfaces:**
+
 - Consumes: tudo de `games/embarca/src/logic/index.ts`.
 
 - [ ] **Step 1: Escrever `scenario.test.ts`.** Fase (tabuleiro 10000×10000, 4 vagas), veículos por id: `0` carro cor 0 em `(1500,1500)` 0°; `1` carro cor 0 em `(6000,1500)` 0° (bloqueia o 0); `2` van cor 1 em `(2000,4000)` 90°; `3` van cor 1 em `(2000,7000)` 90° (bloqueia o 2); `4` ônibus cor 2 em `(7000,5000)` 135°; `5` ônibus cor 2 em `(8500,8500)` 30°. Fila: 8×cor 0, depois 12×cor 1, depois 20×cor 2. Casos:

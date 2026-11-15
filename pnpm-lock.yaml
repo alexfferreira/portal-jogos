@@ -246,6 +246,12 @@ importers:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)
 
+  games/embarca:
+    dependencies:
+      '@recreio/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+
   games/mistura:
     dependencies:
       '@recreio/core':

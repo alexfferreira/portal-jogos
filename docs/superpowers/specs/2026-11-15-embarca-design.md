@@ -40,6 +40,7 @@ acertar. Jogo pessoal do Alex, offline, sem anúncios, no celular (retrato).
 livres, cada um com uma seta de saída, e obstáculos fixos. Veículos não se movem, a não ser ao serem enviados.
 
 **Enviar um veículo (toque).** O veículo anda em linha reta na direção da seta.
+
 - Caminho livre até a borda **e** há vaga livre: sai, estaciona na vaga livre de menor índice.
 - Caminho bloqueado (outro veículo ou obstáculo): bate e volta, sem mudar o estado. O jogo mostra a batida e
   conta em "batidas" (só informativo, sem penalidade) **[Minha decisão]**.
@@ -141,6 +142,7 @@ tempo ou não acha, avisa e não gasta a carga, como na Mistura).
 ## 9. Fora da primeira versão (marcos posteriores)
 
 Definições propostas, a confirmar quando chegar a vez:
+
 - **Obstáculos fixos:** retângulos que só bloqueiam.
 - **Garagem:** caixa com uma fila de N veículos; quando a "boca" da garagem fica livre, o próximo veículo
   aparece ali. O gerador trata cada veículo da garagem como posto na ordem dela.
