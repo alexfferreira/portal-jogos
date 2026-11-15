@@ -1,55 +1,29 @@
-import { fitOrthographic, Tweens } from '@recreio/core';
-import { BufferGeometry, Group, OrthographicCamera, Scene, type Object3D } from 'three';
+import { BufferGeometry, type Object3D } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyMove, createState, type MoveApplied, type MoveRejected, type State } from '../logic';
 import { level as buildLevel, scenarioLevel, veh } from '../logic/testkit';
-import { Board, type BoardStage } from './board';
+import { Board } from './board';
+import { FakeStage, vehicleGroupsOf } from './fakeStage';
 import { computeLayout } from './layout';
 import { PARKED_HEADING, planMove } from './plan';
 
 afterEach(() => vi.restoreAllMocks());
-
-/** Palco falso: cena e câmera reais do Three, tweens reais avançados à mão. */
-class FakeStage implements BoardStage {
-  readonly scene = new Scene();
-  readonly camera = new OrthographicCamera(-1, 1, 1, -1);
-  readonly tweens = new Tweens();
-  size = { width: 390, height: 800 };
-  readonly boundsCalls: { width: number; depth: number }[] = [];
-  private handlers: ((w: number, h: number) => void)[] = [];
-
-  setBounds(b: { width: number; depth: number }): void {
-    this.boundsCalls.push({ width: b.width, depth: b.depth });
-    const { halfWidth, halfHeight } = fitOrthographic(b, this.size.width / this.size.height);
-    this.camera.left = -halfWidth;
-    this.camera.right = halfWidth;
-    this.camera.top = halfHeight;
-    this.camera.bottom = -halfHeight;
-    this.camera.updateProjectionMatrix();
-  }
-
-  onResize(fn: (w: number, h: number) => void): () => void {
-    this.handlers.push(fn);
-    return () => {
-      this.handlers = this.handlers.filter((h) => h !== fn);
-    };
-  }
-
-  /** Avança o relógio até as animações acabarem. */
-  run(board: Board, step = 0.05, maxSeconds = 20): void {
-    for (let t = 0; board.animating && t < maxSeconds; t += step) this.tweens.update(step);
-  }
-}
 
 const scenario = scenarioLevel();
 
 function setup(level = scenario) {
   const stage = new FakeStage();
   const layouts: { id: number }[][] = [];
-  const board = new Board({ stage, quality: 'high', onLayout: (boxes) => layouts.push(boxes) });
+  const sounds: string[] = [];
+  const board = new Board({
+    stage,
+    quality: 'high',
+    onLayout: (boxes) => layouts.push(boxes),
+    sfx: (name) => sounds.push(name),
+  });
   const state = createState(level);
   board.setLevel(level, state);
-  return { stage, board, state, layouts };
+  return { stage, board, state, layouts, sounds };
 }
 
 const apply = (state: State, vehicle: number): MoveApplied => {
@@ -58,13 +32,7 @@ const apply = (state: State, vehicle: number): MoveApplied => {
   return r;
 };
 
-const vehicleGroups = (root: Object3D): Group[] => {
-  const out: Group[] = [];
-  root.traverse((o) => {
-    if (o instanceof Group && typeof o.userData.vehicleId === 'number') out.push(o);
-  });
-  return out;
-};
+const vehicleGroups = (root: Object3D): Object3D[] => vehicleGroupsOf(root);
 
 describe('Board: montagem', () => {
   it('setLevel cria um veículo por id e enquadra o conteúdo', () => {
@@ -241,11 +209,7 @@ describe('Board: troca de fase e limpeza', () => {
   it('onLayout republica os retângulos quando o canvas muda de tamanho', () => {
     const { stage, layouts } = setup();
     const n = layouts.length;
-    stage.size = { width: 800, height: 390 };
-    stage.setBounds({ width: computeLayout(scenario).width, depth: computeLayout(scenario).depth });
-    (stage as unknown as { handlers: ((w: number, h: number) => void)[] }).handlers.forEach((h) =>
-      h(800, 390),
-    );
+    stage.resize(800, 390);
     expect(layouts.length).toBeGreaterThan(n);
   });
 });

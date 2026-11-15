@@ -9,6 +9,7 @@
 import {
   createToyMaterial,
   easing,
+  paletteColor,
   type Quality,
   type Stage,
   type TweenHandle,
@@ -28,7 +29,8 @@ import {
   type Slot,
   type State,
 } from '../logic';
-import { computeLayout, pickVehicle, type Layout, type WorldPoint } from './layout';
+import { Confetti, Hand, handPulse, HintRing } from './effects';
+import { computeLayout, pickVehicle, UNIT, type Layout, type WorldPoint } from './layout';
 import { PARKED_HEADING, planMove, type PathPoint, type Step } from './plan';
 import { QueueView } from './queueView';
 import { SlotsView } from './slotsView';
@@ -37,7 +39,7 @@ import { createVehicleView, placeVehicle, VehicleAssets } from './vehicleView';
 /** O que o tabuleiro precisa do palco (permite um palco falso nos testes). */
 export type BoardStage = Pick<
   Stage,
-  'scene' | 'camera' | 'tweens' | 'size' | 'onResize' | 'setBounds'
+  'scene' | 'camera' | 'tweens' | 'size' | 'onResize' | 'setBounds' | 'onFrame'
 >;
 
 export interface ScreenBox {
@@ -54,6 +56,8 @@ export interface BoardOptions {
   onAnimating?(animating: boolean): void;
   /** Retângulos dos veículos no tabuleiro, em px do canvas (para dados de teste). */
   onLayout?(boxes: ScreenBox[]): void;
+  /** Sons nos instantes certos da animação (estacionar, veículo cheio partindo, impacto). */
+  sfx?(name: 'click' | 'complete' | 'error'): void;
 }
 
 const SLOT_LIFT = 0.04;
@@ -120,6 +124,12 @@ export class Board {
   private epoch = 0;
   private disposed = false;
   private readonly offResize: () => void;
+  private readonly offFrame: () => void;
+  private readonly hintRing = new HintRing();
+  private readonly hand = new Hand();
+  private confetti: Confetti | null = null;
+  private handVehicle: number | null = null;
+  private clock = 0;
 
   constructor(opts: BoardOptions) {
     this.opts = opts;
@@ -127,6 +137,10 @@ export class Board {
     this.quality = opts.quality;
     this.stage.scene.add(this.root);
     this.offResize = this.stage.onResize(() => this.publishLayout());
+    this.hintRing.object.name = 'hint-ring';
+    this.hand.object.name = 'hand';
+    this.root.add(this.hintRing.object, this.hand.object);
+    this.offFrame = this.stage.onFrame((dt) => this.tick(dt));
   }
 
   // --- montagem --------------------------------------------------------------------
@@ -169,6 +183,15 @@ export class Board {
   /** Mostra o estado sem animar (termina antes qualquer animação em curso). */
   setState(state: State): void {
     this.finishAnimations();
+    // Vaga extra (ou volta ao normal): o layout depende do número de vagas.
+    if (
+      this.level !== null &&
+      this.layout !== null &&
+      state.slots.length !== this.layout.slots.length
+    ) {
+      this.setLevel(this.level, state);
+      return;
+    }
     this.applyState(state);
     this.publishLayout();
   }
@@ -191,6 +214,7 @@ export class Board {
     const layout = this.layout;
     if (level === null || layout === null) return;
     this.state = state;
+    this.clearOverlays();
     const slotOf = new Map<number, number>();
     state.slots.forEach((s, i) => {
       if (s !== null) slotOf.set(s.vehicle, i);
@@ -218,6 +242,7 @@ export class Board {
   }
 
   private teardown(): void {
+    this.clearOverlays();
     for (const view of this.views.values()) this.root.remove(view);
     this.views.clear();
     if (this.queue) {
@@ -236,6 +261,87 @@ export class Board {
     this.ground = null;
     this.groundGeometry = null;
     this.groundMaterial = null;
+  }
+
+  // --- dica, mãozinha e confete ----------------------------------------------------
+
+  /** Dica, mão e confete somem a qualquer mudança de estado ou de fase. */
+  private clearOverlays(): void {
+    this.hintRing.hide();
+    this.hand.hide();
+    this.handVehicle = null;
+    if (this.confetti) {
+      this.confetti.dispose();
+      this.confetti = null;
+    }
+  }
+
+  private vehicleCenter(id: number): WorldPoint | null {
+    const v = this.level?.vehicles[id];
+    if (v === undefined || this.layout === null) return null;
+    return this.layout.toWorld(v.cx, v.cy);
+  }
+
+  get hasHint(): boolean {
+    return this.hintRing.object.visible;
+  }
+
+  /** Vagas mostradas no momento (4, ou 5 com a vaga extra). */
+  get slotCount(): number {
+    return this.layout?.slots.length ?? 0;
+  }
+
+  /** Anel pulsante sob o veículo sugerido; `null` esconde. */
+  setHint(vehicleId: number | null): void {
+    const center = vehicleId === null ? null : this.vehicleCenter(vehicleId);
+    const v = vehicleId === null ? undefined : this.level?.vehicles[vehicleId];
+    if (center === null || v === undefined || !this.shownOnBoard.includes(vehicleId as number)) {
+      this.hintRing.hide();
+      return;
+    }
+    this.hintRing.show(center, VEHICLE_SPECS[v.kind].length / 2 / UNIT + 0.4);
+  }
+
+  /** Mãozinha tocando no centro do veículo; `null` esconde. */
+  setHand(vehicleId: number | null): void {
+    this.handVehicle = vehicleId;
+    this.clock = 0;
+    if (vehicleId === null) this.hand.hide();
+    else this.tick(0);
+  }
+
+  /** Estouro de confete no centro do tabuleiro, nas cores dos veículos da fase. */
+  celebrate(): void {
+    const layout = this.layout;
+    const level = this.level;
+    if (layout === null || level === null) return;
+    this.confetti?.dispose();
+    const colors = [...new Set(level.vehicles.map((v) => paletteColor(v.color).hex))];
+    const confetti = new Confetti(90);
+    this.root.add(confetti.object);
+    confetti.start({ x: layout.board.cx, z: layout.board.cz }, colors);
+    this.confetti = confetti;
+  }
+
+  /** A cada quadro: pulso do anel, mãozinha e confete. */
+  private tick(dt: number): void {
+    this.clock += dt;
+    if (this.hintRing.object.visible) this.hintRing.update(this.clock);
+    if (this.handVehicle !== null) {
+      const point = this.vehicleCenter(this.handVehicle);
+      if (point === null) this.hand.hide();
+      else {
+        const pose = handPulse(this.clock);
+        this.hand.set(point, pose.press, pose.alpha);
+      }
+    }
+    if (this.confetti) {
+      this.confetti.update(dt);
+      if (this.confetti.done) {
+        this.confetti.dispose();
+        this.confetti = null;
+      }
+    }
   }
 
   // --- animações -------------------------------------------------------------------
@@ -296,6 +402,7 @@ export class Board {
     onDone: () => void,
   ): void {
     this.finishAnimations();
+    this.hintRing.hide();
     const layout = this.layout;
     if (this.level === null || layout === null) {
       onDone();
@@ -343,6 +450,7 @@ export class Board {
               this.liveSlots[step.slot] = { vehicle: step.vehicle, filled: 0 };
               this.slots?.setSlots(this.liveSlots);
             }
+            this.opts.sfx?.('click');
             done();
           },
         });
@@ -380,10 +488,15 @@ export class Board {
       }
       case 'depart': {
         const lengths = cumulative(step.path);
+        let started = false;
         this.track({
           ...base,
           ease: easing.inOutQuad,
           onUpdate: (t) => {
+            if (!started) {
+              started = true;
+              this.opts.sfx?.('complete');
+            }
             if (view === undefined) return;
             const p = sample(step.path, lengths, t);
             placeVehicle(view, p, p.heading, travelLift(t, SLOT_LIFT, false));
@@ -426,10 +539,15 @@ export class Board {
     }
     const dir = { x: Math.cos(home.heading), z: -Math.sin(home.heading) };
     const back = step.duration - step.forwardDuration;
+    let hit = false;
     this.track({
       ...base,
       onUpdate: (t) => {
         const time = t * step.duration;
+        if (!hit && time >= step.forwardDuration) {
+          hit = true;
+          this.opts.sfx?.('error');
+        }
         // Ida acelerando até o contato; depois a volta, desacelerando até o lugar de origem.
         const off =
           time < step.forwardDuration
@@ -472,9 +590,14 @@ export class Board {
       return;
     }
     const side = { x: Math.sin(home.heading), z: Math.cos(home.heading) };
+    let started = false;
     this.track({
       ...base,
       onUpdate: (t) => {
+        if (!started) {
+          started = true;
+          this.opts.sfx?.('error');
+        }
         const off = 0.08 * Math.sin(Math.PI * 6 * t) * (1 - t);
         placeVehicle(
           view,
@@ -576,7 +699,10 @@ export class Board {
     this.disposed = true;
     this.discard();
     this.offResize();
+    this.offFrame();
     this.teardown();
+    this.hintRing.dispose();
+    this.hand.dispose();
     this.assets.dispose();
     this.stage.scene.remove(this.root);
     this.level = null;
