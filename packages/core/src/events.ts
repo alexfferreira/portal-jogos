@@ -66,6 +66,10 @@ export interface GameEvents {
     canUndo: boolean;
     canAddTube: boolean;
     reason?: 'stuck' | 'unsolvable';
+    /** Id do power-up que o botão da ação extra aciona (padrão: `extraTube`, da Mistura). */
+    extraId?: string;
+    /** Chave i18n do rótulo do botão da ação extra (padrão: `nomoves.extraTube`). */
+    extraLabelKey?: string;
   };
   /** O contexto WebGL foi perdido; o palco pausa e tenta voltar sozinho. */
   'graphics-lost': Record<string, never>;

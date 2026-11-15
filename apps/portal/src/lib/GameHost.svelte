@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { GameInstance, HudState } from '@recreio/core';
+  import { noMovesExtraAction, type NoMovesAction } from './noMoves';
   import { Button, Icon, IconButton, Modal } from '@recreio/ui';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
@@ -22,6 +23,7 @@
     canUndo: boolean;
     canAddTube: boolean;
     deadEnd: boolean;
+    extra: NoMovesAction;
   } | null>(null);
   let graphicsLost = $state(false);
   let graphicsStuck = $state(false);
@@ -70,6 +72,7 @@
             canUndo: e.canUndo,
             canAddTube: e.canAddTube,
             deadEnd: e.reason === 'unsolvable',
+            extra: noMovesExtraAction(e),
           }
         : null;
     });
@@ -224,9 +227,12 @@
       </Button>
     {/if}
     {#if noMoves?.canAddTube}
-      <Button variant="secondary" onclick={() => instance?.usePowerUp?.('extraTube')}>
+      <Button
+        variant="secondary"
+        onclick={() => instance?.usePowerUp?.(noMoves?.extra.id ?? 'extraTube')}
+      >
         <Icon name="plus" />
-        {t('nomoves.extraTube')}
+        {t(noMoves.extra.labelKey)}
       </Button>
     {/if}
     <Button variant="ghost" onclick={restart}>
