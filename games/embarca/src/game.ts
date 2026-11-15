@@ -1,4 +1,10 @@
-import { completeLevel, type GameInstance, type GameModule, type HudState } from '@recreio/core';
+import {
+  completeLevel,
+  type GameInstance,
+  type GameModule,
+  type HudState,
+  type PowerUpState,
+} from '@recreio/core';
 import { createLevelLoader } from './levelLoader';
 import { Session, type GeneratedLevel, type State } from './logic';
 import { EMBARCA_ID, messages, meta } from './meta';
@@ -67,6 +73,7 @@ export const embarcaGame: GameModule = {
     const board = new Board({
       stage,
       quality: ctx.settings.get().quality,
+      sfx: (name) => ctx.audio.play(name),
       onAnimating: (animating) => {
         ds.moving = animating ? '1' : '0';
         if (!animating) ds.view = board.viewString();
@@ -106,7 +113,8 @@ export const embarcaGame: GameModule = {
     let busy = false;
     let paused = false;
     let destroyed = false;
-    let stuckShown = false;
+    /** Aviso "sem jogadas" aberto no momento (e por quê); `null` = fechado. */
+    let stuckReason: 'stuck' | 'unsolvable' | null = null;
     /** Muda a cada fase/reinício: descarta callbacks atrasados. */
     let epoch = 0;
     /** Fase cuja geração falhou (tentar de novo pelo Reiniciar ou por novo `next`). */
@@ -116,7 +124,32 @@ export const embarcaGame: GameModule = {
     // --- HUD e diagnóstico ----------------------------------------------------------
 
     const emitHud = (): void => {
-      const hud: HudState = { level, powerUps: [] };
+      const r = session.remaining;
+      const locked = won || busy;
+      const powerUps: PowerUpState[] = [
+        {
+          id: 'undo',
+          labelKey: 'embarca.powerup.undo',
+          icon: 'undo',
+          count: r.undo,
+          disabled: locked || !session.canUndo,
+        },
+        {
+          id: 'extraSlot',
+          labelKey: 'embarca.powerup.extraSlot',
+          icon: 'plus',
+          count: r.extraSlot,
+          disabled: locked,
+        },
+        {
+          id: 'hint',
+          labelKey: 'embarca.powerup.hint',
+          icon: 'bulb',
+          count: r.hint,
+          disabled: locked,
+        },
+      ];
+      const hud: HudState = { level, powerUps };
       if (errorKey !== null) hud.message = errorKey;
       ctx.events.emit('hud', hud);
     };
@@ -127,21 +160,40 @@ export const embarcaGame: GameModule = {
       ds.view = board.viewString();
       ds.won = String(won);
       ds.bumps = String(session.bumps);
+      ds.slots = String(session.state.slots.length);
+    };
+
+    /** Qualquer mudança de estado: HUD e dados de teste em dia. */
+    const stateChanged = (): void => {
+      emitHud();
+      syncDataset();
+    };
+
+    const showNoMoves = (reason: 'stuck' | 'unsolvable'): void => {
+      const r = session.remaining;
+      stuckReason = reason;
+      ctx.events.emit('no-moves', {
+        stuck: true,
+        canUndo: session.canUndo && r.undo > 0,
+        canAddTube: r.extraSlot > 0,
+        reason,
+        extraId: 'extraSlot',
+        extraLabelKey: 'embarca.powerup.extraSlot',
+      });
+    };
+
+    const closeNoMoves = (): void => {
+      if (stuckReason === null) return;
+      stuckReason = null;
+      ctx.events.emit('no-moves', { stuck: false, canUndo: false, canAddTube: false });
     };
 
     const updateStuck = (): void => {
       if (!won && !busy && session.stuck) {
-        stuckShown = true;
-        ctx.events.emit('no-moves', {
-          stuck: true,
-          canUndo: false,
-          canAddTube: false,
-          reason: 'stuck',
-        });
-      } else if (stuckShown) {
-        stuckShown = false;
-        ctx.events.emit('no-moves', { stuck: false, canUndo: false, canAddTube: false });
+        showNoMoves('stuck');
+        return;
       }
+      closeNoMoves();
     };
 
     // --- fim de fase ----------------------------------------------------------------
@@ -153,7 +205,7 @@ export const embarcaGame: GameModule = {
         .saveLevels(progress)
         .catch((err: unknown) => console.error('[embarca] falha ao salvar', err));
       ctx.audio.play('win');
-      syncDataset();
+      stateChanged();
       const mine = epoch;
       stage.tweens.add({
         duration: WIN_DELAY,
@@ -172,7 +224,7 @@ export const embarcaGame: GameModule = {
         win();
         return;
       }
-      syncDataset();
+      stateChanged();
       updateStuck();
     };
 
@@ -188,8 +240,8 @@ export const embarcaGame: GameModule = {
       failedTarget = null;
       errorKey = null;
       board.setLevel(gen.state.level, session.state);
-      emitHud();
-      syncDataset();
+      closeNoMoves();
+      stateChanged();
       updateStuck();
       startPrefetch();
     };
@@ -223,15 +275,34 @@ export const embarcaGame: GameModule = {
       if (result.ok) {
         ctx.audio.play('click');
         const mine = epoch;
+        stateChanged();
         board.playMove(before, { vehicle }, result, result.state, () => onMoveDone(mine));
       } else {
-        if (result.reason !== 'unknown-vehicle') {
-          ctx.audio.play('error');
-          ctx.haptics.tap(40);
-        }
+        // O som de erro toca no instante do impacto (o `Board` cuida disso).
+        if (result.reason !== 'unknown-vehicle') ctx.haptics.tap(40);
         board.playMove(before, { vehicle }, result, before, () => syncDataset());
+        syncDataset();
       }
-      syncDataset();
+    };
+
+    // --- power-ups ------------------------------------------------------------------
+
+    const undo = (): void => {
+      const out = session.undo();
+      if (!out.ok) return;
+      ctx.audio.play('click');
+      board.setState(out.state);
+      stateChanged();
+      updateStuck();
+    };
+
+    const extraSlot = (): void => {
+      const out = session.addSlot();
+      if (!out.ok) return;
+      ctx.audio.play('click');
+      board.setState(out.state);
+      stateChanged();
+      updateStuck();
     };
 
     const offTap = stage.onTap((p) => {
@@ -262,8 +333,8 @@ export const embarcaGame: GameModule = {
       won = false;
       busy = false;
       board.setState(state);
-      emitHud();
-      syncDataset();
+      closeNoMoves();
+      stateChanged();
       updateStuck();
     };
 
@@ -289,8 +360,13 @@ export const embarcaGame: GameModule = {
         if (destroyed || busy) return;
         void loadLevel(level + 1);
       },
-      usePowerUp() {
-        // Os power-ups da Embarca chegam no marco 4.
+      usePowerUp(id) {
+        if (destroyed) return;
+        // Primeiro termina as animações (pode disparar a vitória); depois decide.
+        board.finishAnimations();
+        if (busy || won) return;
+        if (id === 'undo') undo();
+        else if (id === 'extraSlot') extraSlot();
       },
       destroy() {
         if (destroyed) return;

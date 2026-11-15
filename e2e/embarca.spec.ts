@@ -186,3 +186,119 @@ test('uma fase alta (41) abre sem erros e mostra todos os veículos dentro do ca
   await page.screenshot({ path: 'test-results/embarca-fase41-390x844.png' });
   expect(errors).toEqual([]);
 });
+
+test.describe('power-ups', () => {
+  const counts = async (page: import('@playwright/test').Page) => ({
+    undo: await page.getByTestId('powerup-undo-count').textContent(),
+    extraSlot: await page.getByTestId('powerup-extraSlot-count').textContent(),
+    hint: await page.getByTestId('powerup-hint-count').textContent(),
+  });
+
+  test('a barra tem Desfazer (5), Vaga extra (1) e Dica (1), com Desfazer desabilitado no início', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    await expect(page.getByTestId('powerup-undo')).toContainText('Desfazer');
+    await expect(page.getByTestId('powerup-extraSlot')).toContainText('Vaga extra');
+    await expect(page.getByTestId('powerup-hint')).toContainText('Dica');
+    expect(await counts(page)).toEqual({ undo: '5', extraSlot: '1', hint: '1' });
+    await expect(page.getByTestId('powerup-undo')).toBeDisabled();
+    expect(errors).toEqual([]);
+  });
+
+  test('Desfazer devolve a jogada e gasta uma carga', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    const initial = await canvasData(page, 'state');
+    const first = generateLevel(1).solution[0]!.vehicle;
+    await tapVehicle(page, first);
+    await waitIdle(page);
+    expect(await canvasData(page, 'state')).not.toBe(initial);
+    await page.getByTestId('powerup-undo').click();
+    await expect.poll(() => canvasData(page, 'state')).toBe(initial);
+    await expectViewMatchesState(page);
+    await expect(page.getByTestId('powerup-undo-count')).toHaveText('4');
+    expect(errors).toEqual([]);
+  });
+
+  test('Vaga extra abre a quinta vaga; Reiniciar volta a quatro e devolve a carga', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    expect(await canvasData(page, 'slots')).toBe('4');
+    await page.getByTestId('powerup-extraSlot').click();
+    await expect.poll(() => canvasData(page, 'slots')).toBe('5');
+    await expect(page.getByTestId('powerup-extraSlot-count')).toHaveText('0');
+    await expect(page.getByTestId('powerup-extraSlot')).toBeDisabled();
+    await expectViewMatchesState(page);
+    await page.screenshot({ path: 'test-results/embarca-vaga-extra-390x844.png' });
+    await page.getByRole('button', { name: 'Reiniciar' }).click();
+    await expect.poll(() => canvasData(page, 'slots')).toBe('4');
+    await expect(page.getByTestId('powerup-extraSlot-count')).toHaveText('1');
+    await expectViewMatchesState(page);
+    expect(errors).toEqual([]);
+  });
+
+  test('foco 3: Desfazer depois da Vaga extra mantém as cinco vagas', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    const first = generateLevel(1).solution[0]!.vehicle;
+    await tapVehicle(page, first);
+    await waitIdle(page);
+    await page.getByTestId('powerup-extraSlot').click();
+    await expect.poll(() => canvasData(page, 'slots')).toBe('5');
+    await page.getByTestId('powerup-undo').click();
+    await expect.poll(async () => (await counts(page)).undo).toBe('4');
+    expect(await canvasData(page, 'slots')).toBe('5');
+    await expectViewMatchesState(page);
+    expect(errors).toEqual([]);
+  });
+
+  for (const id of ['undo', 'extraSlot', 'hint'] as const) {
+    test(`foco 1: usar ${id} durante a última jogada não altera a fase vencida`, async ({
+      page,
+    }) => {
+      const errors = collectErrors(page);
+      await openEmbarca(page);
+      const solution = generateLevel(1).solution;
+      for (const move of solution.slice(0, -1)) {
+        await tapVehicle(page, move.vehicle);
+        await waitIdle(page);
+      }
+      await tapVehicle(page, solution.at(-1)!.vehicle); // não espera a animação
+      await page.getByTestId(`powerup-${id}`).click({ force: true });
+      await expect(page.getByRole('dialog', { name: 'Fase concluída' })).toBeVisible({
+        timeout: 20_000,
+      });
+      expect(await canvasData(page, 'won')).toBe('true');
+      expect(errors).toEqual([]);
+    });
+  }
+});
+
+test.describe('sem jogadas: ações do painel', () => {
+  const setup = findStuckSequence();
+
+  test('oferece Desfazer, Vaga extra e Reiniciar, e a Vaga extra destrava a partida', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    expect(setup).not.toBeNull();
+    await seedEmbarcaLevel(page, setup!.level);
+    await openEmbarca(page);
+    for (const move of setup!.moves) {
+      await tapVehicle(page, move.vehicle);
+      await waitIdle(page);
+    }
+    const dialog = page.getByRole('dialog', { name: 'Sem jogadas' });
+    await expect(dialog).toBeVisible();
+    const names = (await dialog.getByRole('button').allTextContents()).map((n) => n.trim());
+    expect(names).toEqual(['Desfazer', 'Vaga extra', 'Reiniciar']);
+    await dialog.getByRole('button', { name: 'Vaga extra' }).click();
+    await expect(dialog).toBeHidden();
+    expect(await canvasData(page, 'slots')).toBe('5');
+    expect(errors).toEqual([]);
+  });
+});
