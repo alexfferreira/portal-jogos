@@ -223,3 +223,17 @@ Nada foi publicado: só arquivos e documentação locais. Criar conta e projeto 
 - **Dica:** `unsolvable` abre o mesmo modal; `limit` mostra a mensagem `mistura.hint.limit` no HUD. Nos dois casos a carga da dica **não** é gasta.
 - **Evento:** `reason?: 'stuck' | 'unsolvable'` (padrão `'stuck'`), compatível com o que já existia.
 - **Revisão (ajustes):** o aviso "sem saída" fica aberto enquanto a nova checagem roda (sem piscar ao usar tubo extra/desfazer) e tem as opções atualizadas; se o jogador joga durante uma dica pendente, o estado novo é checado quando a dica termina; fase nova/reinício fecham o aviso. O texto diz "Sem ajuda, esta posição não tem solução", pois o solver ignora power-ups. Não há debounce da checagem: cada pedido novo substitui o que está na fila; medir em celular real se pesar.
+
+## Embarca — Marco 1 (lógica)
+
+Design: `docs/superpowers/specs/2026-11-15-embarca-design.md`. Plano: `docs/superpowers/plans/2026-11-15-embarca-marco1-logica.md`.
+
+- **2026-11-15 · Dimensões dos veículos fixas** (`VEHICLE_SPECS`, em milésimos de unidade do tabuleiro): carro 1200×600 (4 lugares), van 1600×700 (6), ônibus 2400×800 (10); o comprimento é ao longo da seta. Definidas na lógica e **não mudam**: o render do marco 3 escala o tabuleiro, não a lógica.
+- **2026-11-15 · Geometria só com inteiros.** Coordenadas em milésimos, ângulos em graus inteiros, seno/cosseno de uma **tabela embutida** (`SIN_0_90`, 91 inteiros ×10000, demais quadrantes por simetria). Sem `Math.sin/cos`, porque o gerador roda no Worker do celular e os testes no Node e o resultado precisa ser idêntico em qualquer motor.
+- **2026-11-15 · Colisão estrita.** Retângulos que só se encostam (distância zero) **não** se bloqueiam; teste dos eixos separadores em aritmética inteira. O vetor (cos, sin) tem erro de arredondamento de até ~10⁻⁴, então só alinhamentos de 0°/90°/180°/270° são exatos; o gerador do marco 2 exige folga mínima para nenhuma jogada depender de caso de borda.
+- **2026-11-15 · Varredura pelo eixo do veículo.** O veículo anda na direção do próprio comprimento, então o espaço que ele varre é um retângulo mais comprido (mesma largura). "Caminho livre" é uma só verificação de sobreposição por veículo, feita uma vez em `createLevel` (grafo `blockers`/`obstructed`).
+- **2026-11-15 · `bumps` fica na `Session`, não no `State`.** O estado de jogo não muda numa batida; só a sessão conta batidas (caminho bloqueado ou sem vaga). Recusas `unknown-vehicle` não contam.
+- **2026-11-15 · `waiting` no `State` é só o gancho da garagem** (marco 5): hoje sempre `[]`. O flag `hidden` do veículo é o gancho do misterioso; `visibleColor` esconde a cor até ele estacionar.
+- **2026-11-15 · Fase inválida lança `RangeError`:** sem veículos, centro fora do tabuleiro, sobreposição inicial (veículo×veículo ou veículo×obstáculo), assentos por cor diferentes dos passageiros dela, números não inteiros, `slotCount < 1`. Ângulos são normalizados para 0..359.
+- **2026-11-15 · Limite conhecido:** "sem saída" (`isStuck`) só detecta falta de jogadas; **não** detecta posição sem solução que ainda tem jogadas legais (mesma lição da Mistura). Isso virá do solver nos marcos 2 e 4.
+- **2026-11-15 · `.superpowers` entrou no `.prettierignore`:** é o espaço de trabalho de scratch da execução de planos (git-ignored) e não deve ser verificado pelo prettier.
