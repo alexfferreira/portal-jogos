@@ -6,8 +6,15 @@
  * Cópia adaptada da Mistura (extrair para o `core` no terceiro jogo): na Embarca os planos
  * ficam DEITADOS no plano XZ, porque a câmera olha de cima.
  */
-import { CanvasTexture, PlaneGeometry, SRGBColorSpace } from 'three';
-import { VEHICLE_SPECS, type VehicleKind } from '../logic';
+import {
+  CanvasTexture,
+  Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
+  SRGBColorSpace,
+  type Texture,
+} from 'three';
+import { VEHICLE_SPECS, type Vehicle, type VehicleKind } from '../logic';
 import { ARROW_BOX, LOOKS, WHEEL_RADIUS } from './vehicleView';
 
 export const HIDDEN_SYMBOL = 14;
@@ -213,7 +220,9 @@ function drawQuestion(c: CanvasRenderingContext2D, x: number, y: number, r: numb
 export interface SymbolAtlas {
   /** Um plano por símbolo (índice = cor da PALETTE; `HIDDEN_SYMBOL` = "?"), UV já recortado. */
   geometries: PlaneGeometry[];
-  texture: CanvasTexture;
+  texture: Texture;
+  /** Material compartilhado por todos os símbolos (textura do atlas, com transparência). */
+  material: MeshBasicMaterial;
   dispose(): void;
 }
 
@@ -262,11 +271,15 @@ export function createSymbolAtlas(cell = 128, size = 0.5): SymbolAtlas {
     return g;
   });
 
+  const material = new MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+
   return {
     geometries,
     texture,
+    material,
     dispose() {
       texture.dispose();
+      material.dispose();
       for (const g of geometries) g.dispose();
     },
   };
@@ -314,4 +327,18 @@ export function vehicleSymbolSpot(kind: VehicleKind): SymbolSpot {
     x - half < cabinCenter + cabinHalf - 1e-9 && x + half > cabinCenter - cabinHalf + 1e-9;
   const { bodyTop, cabinTop } = vehicleTops(kind);
   return { x, z: 0, y: (overlapsCabin ? cabinTop : bodyTop) + SURFACE_LIFT, size: SYMBOL_SIZE };
+}
+
+/** Lado do plano de cada símbolo do atlas (o `createSymbolAtlas` usa 0,5 por padrão). */
+export const ATLAS_SIZE = 0.5;
+
+/** Símbolo da cor do veículo, deitado no teto (filho do grupo do veículo). */
+export function createVehicleSymbol(atlas: SymbolAtlas, vehicle: Vehicle): Mesh {
+  const spot = vehicleSymbolSpot(vehicle.kind);
+  const mesh = new Mesh(atlas.geometries[vehicle.color] ?? atlas.geometries[0], atlas.material);
+  mesh.name = 'symbol';
+  mesh.position.set(spot.x, spot.y, spot.z);
+  mesh.scale.setScalar(spot.size / ATLAS_SIZE);
+  mesh.renderOrder = 3;
+  return mesh;
 }

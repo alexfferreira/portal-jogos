@@ -189,6 +189,7 @@ export const embarcaGame: GameModule = {
       ds.slots = String(session.state.slots.length);
       ds.hint = activeHint === null ? '' : String(activeHint);
       ds.hand = handTarget === null ? '' : String(handTarget);
+      ds.symbols = String(board.visibleSymbols());
     };
 
     /** Mãozinha: a dica tem prioridade (ela já tem o anel); some durante a animação. */
@@ -450,7 +451,11 @@ export const embarcaGame: GameModule = {
       if (id !== null) tapVehicle(id);
     });
 
-    ctx.settings.subscribe((s) => board.setQuality(s.quality));
+    ctx.settings.subscribe((s) => {
+      board.setQuality(s.quality);
+      board.setColorblind(s.colorblind);
+      syncDataset();
+    });
 
     const restart = (): void => {
       if (destroyed) return;
@@ -477,6 +482,7 @@ export const embarcaGame: GameModule = {
 
     // --- ciclo inicial --------------------------------------------------------------
 
+    board.setColorblind(ctx.settings.get().colorblind);
     board.setLevel(first.state.level, session.state);
     stateChanged();
     updateStuck();

@@ -34,6 +34,7 @@ import { computeLayout, pickVehicle, UNIT, type Layout, type WorldPoint } from '
 import { PARKED_HEADING, planMove, type PathPoint, type Step } from './plan';
 import { QueueView } from './queueView';
 import { SlotsView } from './slotsView';
+import { createSymbolAtlas, createVehicleSymbol, type SymbolAtlas } from './symbols';
 import { createVehicleView, placeVehicle, VehicleAssets } from './vehicleView';
 
 /** O que o tabuleiro precisa do palco (permite um palco falso nos testes). */
@@ -58,6 +59,8 @@ export interface BoardOptions {
   onLayout?(boxes: ScreenBox[]): void;
   /** Sons nos instantes certos da animação (estacionar, veículo cheio partindo, impacto). */
   sfx?(name: 'click' | 'complete' | 'error'): void;
+  /** Fábrica do atlas de símbolos (padrão: o atlas desenhado em canvas, só no navegador). */
+  atlas?(): SymbolAtlas;
 }
 
 const SLOT_LIFT = 0.04;
@@ -130,6 +133,9 @@ export class Board {
   private confetti: Confetti | null = null;
   private handVehicle: number | null = null;
   private clock = 0;
+  private colorblind = false;
+  private atlas: SymbolAtlas | null = null;
+  private vehicleSymbols: Mesh[] = [];
 
   constructor(opts: BoardOptions) {
     this.opts = opts;
@@ -177,6 +183,7 @@ export class Board {
 
     this.stage.setBounds({ width: layout.width, depth: layout.depth });
     this.applyState(state);
+    this.applySymbols();
     this.publishLayout();
   }
 
@@ -243,6 +250,7 @@ export class Board {
 
   private teardown(): void {
     this.clearOverlays();
+    this.vehicleSymbols = [];
     for (const view of this.views.values()) this.root.remove(view);
     this.views.clear();
     if (this.queue) {
@@ -261,6 +269,60 @@ export class Board {
     this.ground = null;
     this.groundGeometry = null;
     this.groundMaterial = null;
+  }
+
+  // --- modo daltônico --------------------------------------------------------------
+
+  private makeAtlas(): SymbolAtlas | null {
+    if (this.opts.atlas) return this.opts.atlas();
+    if (typeof document === 'undefined') return null;
+    return createSymbolAtlas(this.quality === 'low' ? 64 : 128);
+  }
+
+  /** Liga ou desliga os símbolos de cor nos veículos e nos passageiros da fila. */
+  setColorblind(on: boolean): void {
+    if (on === this.colorblind && (!on || this.atlas !== null)) return;
+    this.colorblind = on;
+    if (on) this.applySymbols();
+    else this.removeSymbols();
+  }
+
+  /** Cria (ou refaz, depois de uma fase nova) os símbolos, se o modo estiver ligado. */
+  private applySymbols(): void {
+    if (!this.colorblind || this.level === null) return;
+    this.atlas ??= this.makeAtlas();
+    const atlas = this.atlas;
+    if (atlas === null) return;
+    this.vehicleSymbols = [];
+    for (const v of this.level.vehicles) {
+      const view = this.views.get(v.id);
+      if (view === undefined) continue;
+      const symbol = createVehicleSymbol(atlas, v);
+      view.add(symbol);
+      this.vehicleSymbols.push(symbol);
+    }
+    this.queue?.setSymbols(atlas);
+    this.uprightSymbols();
+  }
+
+  private removeSymbols(): void {
+    for (const m of this.vehicleSymbols) m.removeFromParent();
+    this.vehicleSymbols = [];
+    this.queue?.setSymbols(null);
+    this.atlas?.dispose();
+    this.atlas = null;
+  }
+
+  /** O símbolo gira ao contrário do veículo, para ficar sempre em pé na tela. */
+  private uprightSymbols(): void {
+    for (const m of this.vehicleSymbols) m.rotation.y = -(m.parent?.rotation.y ?? 0);
+  }
+
+  /** Símbolos visíveis agora (0 com o modo desligado). */
+  visibleSymbols(): number {
+    if (!this.colorblind || this.atlas === null || this.level === null) return 0;
+    const onVehicles = this.vehicleSymbols.filter((m) => m.parent?.visible === true).length;
+    return onVehicles + (this.queue?.visibleSymbols ?? 0);
   }
 
   // --- dica, mãozinha e confete ----------------------------------------------------
@@ -327,6 +389,7 @@ export class Board {
   /** A cada quadro: pulso do anel, mãozinha e confete. */
   private tick(dt: number): void {
     this.clock += dt;
+    if (this.colorblind) this.uprightSymbols();
     if (this.hintRing.object.visible) this.hintRing.update(this.clock);
     if (this.handVehicle !== null) {
       const point = this.shownOnBoard.includes(this.handVehicle)
@@ -703,6 +766,7 @@ export class Board {
     this.discard();
     this.offResize();
     this.offFrame();
+    this.removeSymbols();
     this.teardown();
     this.hintRing.dispose();
     this.hand.dispose();

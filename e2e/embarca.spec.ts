@@ -496,3 +496,73 @@ test.describe('tutorial', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('modo daltônico', () => {
+  async function setColorblind(page: import('@playwright/test').Page, on: boolean) {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Configurações' }).click();
+    const toggle = page.getByRole('switch', { name: 'Modo daltônico' });
+    if ((await toggle.getAttribute('aria-checked')) !== String(on)) await toggle.click();
+    await page.waitForTimeout(300);
+  }
+
+  /** Símbolos esperados: veículos visíveis (no tabuleiro ou numa vaga) e passageiros na fila. */
+  const expectedSymbols = (s: ReturnType<typeof createState>): number =>
+    s.onBoard.length +
+    s.slots.filter((slot) => slot !== null).length +
+    (s.level.queue.length - s.queueIndex);
+
+  test('desligado não mostra símbolos; ligado mostra um por veículo e por passageiro', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    await waitFrames(page);
+    expect(await canvasData(page, 'symbols')).toBe('0');
+    await setColorblind(page, true);
+    await openEmbarca(page);
+    await waitFrames(page);
+    const initial = createState(generateLevel(1).state.level);
+    expect(await canvasData(page, 'symbols')).toBe(String(expectedSymbols(initial)));
+    await page.screenshot({ path: 'test-results/embarca-daltonico-390x844.png' });
+    expect(errors).toEqual([]);
+  });
+
+  test('depois de uma jogada os símbolos dos que embarcaram e do veículo que partiu somem', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await setColorblind(page, true);
+    await openEmbarca(page);
+    const g = generateLevel(1);
+    const move = g.solution[0]!;
+    const r = applyMove(createState(g.state.level), move);
+    if (!r.ok) throw new Error('jogada da solução recusada');
+    await tapVehicle(page, move.vehicle);
+    await waitIdle(page);
+    await expect.poll(() => canvasData(page, 'symbols')).toBe(String(expectedSymbols(r.state)));
+    expect(errors).toEqual([]);
+  });
+
+  test('entrar e sair com o modo ligado não aumenta as texturas (o atlas é liberado)', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = collectErrors(page);
+    await setColorblind(page, true);
+    await page.goto('/');
+    const textures: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      await page.getByTestId('card-embarca').click();
+      await expect(page.locator('canvas')).toBeVisible();
+      await waitFrames(page);
+      await expect.poll(async () => Number(await canvasData(page, 'symbols'))).toBeGreaterThan(0);
+      textures.push(await canvasData(page, 'textures'));
+      await page.getByRole('button', { name: 'Voltar' }).click();
+      await expect(page.getByRole('heading', { name: 'Recreio' })).toBeVisible();
+    }
+    expect(Number(textures[0])).toBeGreaterThan(0);
+    for (const t of textures.slice(2)) expect(t).toBe(textures[1]);
+    expect(errors).toEqual([]);
+  });
+});

@@ -15,11 +15,14 @@ import {
   type BufferGeometry,
 } from 'three';
 import type { Layout } from './layout';
+import { ATLAS_SIZE, QUEUE_SYMBOL_SIZE, type SymbolAtlas } from './symbols';
 
 const RADIUS = 0.12;
 const BODY = 0.16;
 /** Altura do centro da cápsula (de pé no chão). */
 const CENTER_Y = RADIUS + BODY / 2;
+/** Altura dos símbolos do modo daltônico: acima do topo da cápsula. */
+const SYMBOL_Y = CENTER_Y + BODY / 2 + RADIUS + 0.05;
 
 export class QueueView {
   readonly object = new Group();
@@ -31,6 +34,9 @@ export class QueueView {
   private readonly allFlyers: Mesh[] = [];
   private readonly matrix = new Matrix4();
   private disposed = false;
+  private progress = 0;
+  /** Símbolos do modo daltônico: um `InstancedMesh` por cor presente na fila. */
+  private symbols: { mesh: InstancedMesh; passengers: number[] }[] = [];
 
   constructor(
     private readonly layout: Layout,
@@ -51,6 +57,8 @@ export class QueueView {
 
   /** Esconde os passageiros `< queueIndex` (já embarcaram) e mostra os demais. */
   setProgress(queueIndex: number): void {
+    this.progress = queueIndex;
+    this.placeSymbols();
     for (let i = 0; i < this.colors.length; i++) {
       const p = this.layout.queuePoint(i);
       const s = i < queueIndex ? 0 : 1;
@@ -58,6 +66,49 @@ export class QueueView {
       this.mesh.setMatrixAt(i, this.matrix);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Liga (com o atlas) ou desliga (`null`) os símbolos sobre cada passageiro. */
+  setSymbols(atlas: SymbolAtlas | null): void {
+    for (const { mesh } of this.symbols) {
+      this.object.remove(mesh);
+      mesh.dispose(); // só os buffers da instância: geometria e material são do atlas
+    }
+    this.symbols = [];
+    if (atlas === null) return;
+    const byColor = new Map<number, number[]>();
+    this.colors.forEach((c, i) => byColor.set(c, [...(byColor.get(c) ?? []), i]));
+    for (const [color, passengers] of byColor) {
+      const geometry = atlas.geometries[color] ?? atlas.geometries[0];
+      if (geometry === undefined) continue;
+      const mesh = new InstancedMesh(geometry, atlas.material, passengers.length);
+      mesh.renderOrder = 3;
+      mesh.frustumCulled = false;
+      this.object.add(mesh);
+      this.symbols.push({ mesh, passengers });
+    }
+    this.placeSymbols();
+  }
+
+  /** Quantos símbolos estão visíveis (passageiros que ainda não embarcaram). */
+  get visibleSymbols(): number {
+    return this.symbols.reduce(
+      (n, s) => n + s.passengers.filter((p) => p >= this.progress).length,
+      0,
+    );
+  }
+
+  private placeSymbols(): void {
+    const scale = QUEUE_SYMBOL_SIZE / ATLAS_SIZE;
+    for (const { mesh, passengers } of this.symbols) {
+      passengers.forEach((p, k) => {
+        const at = this.layout.queuePoint(p);
+        const s = p < this.progress ? 0 : scale;
+        this.matrix.makeScale(s, s, s).setPosition(at.x, SYMBOL_Y, at.z);
+        mesh.setMatrixAt(k, this.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private material(hex: number): Material {
@@ -91,6 +142,7 @@ export class QueueView {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.setSymbols(null);
     for (const m of this.allFlyers) this.object.remove(m);
     this.object.remove(this.mesh);
     this.mesh.dispose();
