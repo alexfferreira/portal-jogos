@@ -1,4 +1,5 @@
 export { levelConfig, type LevelConfig } from './config';
+export { generateLevel, type GenerateOptions, type GeneratedLevel } from './generator';
 export { playOrder, randomPlayoutWinRate, type PlayOutcome } from './difficulty';
 export { rectsOverlap, sweepRect, type Rect } from './geometry';
 export {
