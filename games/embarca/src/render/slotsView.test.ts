@@ -1,4 +1,4 @@
-import { BufferGeometry, Material } from 'three';
+import { BufferGeometry, Material, type Mesh } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scenarioLevel } from '../logic/testkit';
 import { computeLayout } from './layout';
@@ -47,6 +47,19 @@ describe('SlotsView', () => {
       const p = view.pipPoint(0, seat);
       expect(Math.abs(p.x - slot.x)).toBeLessThanOrEqual(slot.width / 2);
     }
+    view.dispose();
+  });
+
+  it('os indicadores ficam acima do teto do maior veículo (não somem sob a carroceria)', () => {
+    const view = new SlotsView(layout, level, 'high');
+    view.setSlots([{ vehicle: 4, filled: 3 }, null, null, null]); // ônibus
+    const visible: number[] = [];
+    view.object.traverse((o) => {
+      if (o.visible && o.type === 'Mesh' && !view.plates.includes(o as Mesh))
+        visible.push(o.position.y);
+    });
+    expect(visible).toHaveLength(10);
+    for (const y of visible) expect(y).toBeGreaterThanOrEqual(0.9);
     view.dispose();
   });
 

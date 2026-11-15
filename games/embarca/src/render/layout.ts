@@ -126,8 +126,8 @@ function distanceToVehicle(v: Vehicle, x: number, y: number): { rect: number; ce
 
 /**
  * Qual veículo um toque em (px, py) escolhe. Dentro do retângulo de um veículo no tabuleiro
- * vale ele; fora de todos, vale o de centro mais próximo cujo retângulo esteja a até
- * `PICK_RADIUS_PX` do toque; empate, o mais embaixo na tela. `null` se nenhum.
+ * vale ele; fora de todos, vale o de retângulo mais próximo do toque, a até `PICK_RADIUS_PX`;
+ * empate, o de centro mais próximo e depois o mais embaixo na tela. `null` se nenhum.
  */
 export function pickVehicle(
   level: Level,
@@ -145,7 +145,10 @@ export function pickVehicle(
   const y = level.board.height / 2 - (worldZ - layout.board.cz) * UNIT;
   const pxPerUnit = view.width / (2 * view.halfWidth);
 
-  let best: { id: number; center: number; z: number } | null = null;
+  // Fora de todos: vale quem está mais perto do dedo (distância ao retângulo); só no empate,
+  // o de centro mais próximo e depois o mais embaixo na tela.
+  let best: { id: number; rect: number; center: number; z: number } | null = null;
+  const EPS = 1e-9;
   for (const id of onBoard) {
     const v = level.vehicles[id];
     if (v === undefined) continue;
@@ -153,13 +156,12 @@ export function pickVehicle(
     if (d.rect * pxPerUnit > PICK_RADIUS_PX) continue;
     if (d.rect === 0) return id;
     const z = layout.toWorld(v.cx, v.cy).z;
-    if (
+    const better =
       best === null ||
-      d.center < best.center - 1e-9 ||
-      (Math.abs(d.center - best.center) <= 1e-9 && z > best.z)
-    ) {
-      best = { id, center: d.center, z };
-    }
+      d.rect < best.rect - EPS ||
+      (Math.abs(d.rect - best.rect) <= EPS &&
+        (d.center < best.center - EPS || (Math.abs(d.center - best.center) <= EPS && z > best.z)));
+    if (better) best = { id, rect: d.rect, center: d.center, z };
   }
   return best === null ? null : best.id;
 }

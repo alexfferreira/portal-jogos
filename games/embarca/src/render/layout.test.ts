@@ -133,6 +133,20 @@ describe('pickVehicle', () => {
     expect(pickVehicle(l, [0, 1], lay, v, px, py)).toBe(0);
   });
 
+  it('perto da ponta de um ônibus vale o ônibus, mesmo com um carro de centro mais próximo', () => {
+    // Ônibus (centro 3000, ponta em 4200) e um carro com a traseira a 300 da ponta. O toque
+    // em x = 4250 está a 50 do ônibus e a 250 do carro, mas mais perto do centro do carro.
+    const l = level(
+      [veh('bus', 0, 3000, 5000, 0), veh('car', 1, 5100, 5000, 0)],
+      [...Array<number>(10).fill(0), ...Array<number>(4).fill(1)],
+    );
+    const lay = computeLayout(l);
+    const v = viewFor(lay, 390, 800);
+    const tap = lay.toWorld(4250, 5000);
+    const [px, py] = toPx(v, tap.x, tap.z);
+    expect(pickVehicle(l, [0, 1], lay, v, px, py)).toBe(0);
+  });
+
   it('toque nas vagas e na fila devolve null', () => {
     const slot = layout.slotCenter(1);
     const [sx, sy] = toPx(view, slot.x, slot.z);

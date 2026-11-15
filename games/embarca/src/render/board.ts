@@ -58,8 +58,15 @@ export interface BoardOptions {
 
 const UP = Math.PI / 2;
 const SLOT_LIFT = 0.04;
-const DRIVE_LIFT = 0.05;
+/** Altura do veículo em deslocamento: acima do teto do ônibus (~0,8), para não atravessar ninguém. */
+const TRAVEL_LIFT = 1.0;
 const GROUND_COLOR = 0xf4f7fb;
+
+/** Sobe no começo do deslocamento e (se `landing`) desce no fim, partindo da altura `base`. */
+function travelLift(t: number, base: number, landing: boolean): number {
+  const ramp = Math.max(0, Math.min(1, t / 0.12, landing ? (1 - t) / 0.12 : 1));
+  return base + (TRAVEL_LIFT - base) * ramp;
+}
 
 /** Posição e direção ao longo de um caminho, por fração da distância percorrida. */
 function sample(path: readonly PathPoint[], lengths: readonly number[], t: number): PathPoint {
@@ -325,7 +332,7 @@ export class Board {
           onUpdate: (t) => {
             if (view === undefined) return;
             const p = sample(step.path, lengths, t);
-            placeVehicle(view, p, p.heading, DRIVE_LIFT);
+            placeVehicle(view, p, p.heading, travelLift(t, 0, true));
           },
           onComplete: () => {
             const layout = this.layout;
@@ -380,7 +387,7 @@ export class Board {
           onUpdate: (t) => {
             if (view === undefined) return;
             const p = sample(step.path, lengths, t);
-            placeVehicle(view, p, p.heading, SLOT_LIFT);
+            placeVehicle(view, p, p.heading, travelLift(t, SLOT_LIFT, false));
           },
           onComplete: () => {
             if (view !== undefined) view.visible = false;

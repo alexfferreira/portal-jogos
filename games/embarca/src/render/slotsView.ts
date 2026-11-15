@@ -11,6 +11,8 @@ import { SLOT_HEIGHT, type Layout, type WorldPoint } from './layout';
 const PLATE_COLOR = 0xcfd8e3;
 const EMPTY_PIP = 0xaab4c0;
 const PIP_RADIUS = 0.055;
+/** Altura dos indicadores: acima do teto do ônibus (~0,8), senão somem sob a carroceria. */
+const PIP_HEIGHT = 1;
 const MAX_SPACING = 0.14;
 /** Distância do indicador à borda de baixo da vaga. */
 const PIP_INSET = 0.18;
@@ -94,7 +96,7 @@ export class SlotsView {
         if (k >= total) return;
         pip.material = this.material(k < filled ? color : EMPTY_PIP);
         const p = this.pipPoint(i, k);
-        pip.position.set(p.x, PIP_RADIUS, p.z);
+        pip.position.set(p.x, PIP_HEIGHT, p.z);
       });
     });
   }

@@ -124,6 +124,21 @@ describe('Board: jogadas', () => {
     expect(board.viewString()).toBe('b:2,3,4,5|s:-,-,-,-|q:8');
   });
 
+  it('durante o deslocamento o veículo passa por cima dos outros e termina no chão', () => {
+    const { board, state, stage } = setup();
+    const r = apply(state, 1);
+    board.playMove(state, { vehicle: 1 }, r, r.state, () => {});
+    const group = vehicleGroups(stage.scene).find((g) => g.userData.vehicleId === 1)!;
+    let maxY = 0;
+    for (let t = 0; board.animating && t < 20; t += 0.05) {
+      stage.tweens.update(0.05);
+      maxY = Math.max(maxY, group.position.y);
+    }
+    // Mais alto que o ônibus (~0,8): nenhum veículo atravessa o outro.
+    expect(maxY).toBeGreaterThanOrEqual(0.9);
+    expect(board.animating).toBe(false);
+  });
+
   it('um veículo que estaciona sem embarque fica na vaga com os assentos vazios', () => {
     const { board, state } = setup();
     const r = apply(state, 4); // ônibus: a fila começa em cor 0, ninguém embarca
