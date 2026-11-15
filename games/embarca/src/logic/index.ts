@@ -1,8 +1,12 @@
 export { rectsOverlap, sweepRect, type Rect } from './geometry';
 export {
+  buildGeometry,
   createLevel,
   DEFAULT_SLOT_COUNT,
+  sweepFor,
   VEHICLE_SPECS,
+  type Geometry,
+  type GeometryInput,
   type LevelInput,
   type VehicleInput,
 } from './level';
@@ -25,7 +29,9 @@ export {
   isStuck,
   isWin,
   legalMoves,
+  settle,
   visibleColor,
+  type Settled,
 } from './state';
 export { cos, normalizeAngle, sin, TRIG_SCALE } from './trig';
 export type {

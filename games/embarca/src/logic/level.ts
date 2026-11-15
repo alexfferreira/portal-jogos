@@ -29,11 +29,17 @@ export interface LevelInput {
   slotCount?: number;
 }
 
+/** Entrada só da geometria (o gerador monta a fila depois). */
+export type GeometryInput = Omit<LevelInput, 'queue' | 'slotCount'>;
+
+/** Parte da fase que não depende da fila: veículos, obstáculos e o grafo de bloqueios. */
+export type Geometry = Pick<Level, 'board' | 'vehicles' | 'obstacles' | 'blockers' | 'obstructed'>;
+
 function requireInteger(value: number, what: string): void {
   if (!Number.isInteger(value)) throw new RangeError(`${what} deve ser um número inteiro`);
 }
 
-function vehicleRect(v: Vehicle): Rect {
+function vehicleRect(v: Pick<Vehicle, 'kind' | 'cx' | 'cy' | 'angle'>): Rect {
   const spec = VEHICLE_SPECS[v.kind];
   return { cx: v.cx, cy: v.cy, hl: spec.length / 2, hw: spec.width / 2, angle: v.angle };
 }
@@ -43,21 +49,33 @@ function obstacleRect(o: Obstacle): Rect {
 }
 
 /**
- * Cria e valida a fase. Calcula, uma vez, o grafo "quem bloqueia quem": como sair um veículo
- * não move os outros, o caminho de cada um só depende de quem ainda está no tabuleiro.
- * Lança `RangeError` para fase inválida.
+ * O retângulo que o veículo varre ao sair (do centro até além da borda do tabuleiro). É
+ * exatamente o usado para calcular `blockers`; o gerador usa o mesmo para plantar a ordem.
  */
-export function createLevel(input: LevelInput): Level {
+export function sweepFor(
+  board: { width: number; height: number },
+  kind: VehicleKind,
+  cx: number,
+  cy: number,
+  angle: number,
+): Rect {
+  const rect = vehicleRect({ kind, cx, cy, angle: normalizeAngle(angle) });
+  const raw = board.width + board.height + VEHICLE_SPECS[kind].length;
+  return sweepRect(rect, raw + ((raw + rect.hl) % 2)); // hl + distância par
+}
+
+/**
+ * Valida a geometria e calcula, uma vez, o grafo "quem bloqueia quem": como sair um veículo
+ * não move os outros, o caminho de cada um só depende de quem ainda está no tabuleiro.
+ * Lança `RangeError` para geometria inválida.
+ */
+export function buildGeometry(input: GeometryInput): Geometry {
   const { width, height } = input.board;
   requireInteger(width, 'largura do tabuleiro');
   requireInteger(height, 'altura do tabuleiro');
   if (width < 1 || height < 1)
     throw new RangeError('o tabuleiro precisa ter largura e altura >= 1');
   if (input.vehicles.length === 0) throw new RangeError('a fase precisa de ao menos um veículo');
-  const slotCount = input.slotCount ?? DEFAULT_SLOT_COUNT;
-  requireInteger(slotCount, 'número de vagas');
-  if (slotCount < 1) throw new RangeError('a fase precisa de ao menos uma vaga');
-  input.queue.forEach((c) => requireInteger(c, 'cor de passageiro'));
 
   const vehicles: Vehicle[] = input.vehicles.map((v, id) => {
     requireInteger(v.color, `cor do veículo ${id}`);
@@ -85,18 +103,6 @@ export function createLevel(input: LevelInput): Level {
     return { ...o, angle: normalizeAngle(o.angle) };
   });
 
-  const seatsByColor = new Map<number, number>();
-  for (const v of vehicles) seatsByColor.set(v.color, (seatsByColor.get(v.color) ?? 0) + v.seats);
-  const passengersByColor = new Map<number, number>();
-  for (const c of input.queue) passengersByColor.set(c, (passengersByColor.get(c) ?? 0) + 1);
-  for (const color of new Set([...seatsByColor.keys(), ...passengersByColor.keys()])) {
-    const seats = seatsByColor.get(color) ?? 0;
-    const passengers = passengersByColor.get(color) ?? 0;
-    if (seats !== passengers) {
-      throw new RangeError(`cor ${color}: ${seats} assentos para ${passengers} passageiros`);
-    }
-  }
-
   const rects = vehicles.map(vehicleRect);
   const obstacleRects = obstacles.map(obstacleRect);
   for (let i = 0; i < rects.length; i++) {
@@ -112,23 +118,43 @@ export function createLevel(input: LevelInput): Level {
     });
   }
 
+  const board = { width, height };
   const blockers: number[][] = [];
   const obstructed: boolean[] = [];
   vehicles.forEach((v, i) => {
-    const raw = width + height + VEHICLE_SPECS[v.kind].length;
-    const rect = rects[i] as Rect;
-    const swept = sweepRect(rect, raw + ((raw + rect.hl) % 2)); // hl + distância par
+    const swept = sweepFor(board, v.kind, v.cx, v.cy, v.angle);
     blockers.push(rects.flatMap((r, j) => (j !== i && rectsOverlap(swept, r) ? [j] : [])));
     obstructed.push(obstacleRects.some((o) => rectsOverlap(swept, o)));
   });
 
-  return {
-    board: { width, height },
-    vehicles,
-    obstacles,
-    queue: [...input.queue],
-    slotCount,
-    blockers,
-    obstructed,
-  };
+  return { board, vehicles, obstacles, blockers, obstructed };
+}
+
+/**
+ * Cria e valida a fase: geometria (`buildGeometry`) mais vagas e fila (assentos de cada cor
+ * iguais aos passageiros dela). Lança `RangeError` para fase inválida.
+ */
+export function createLevel(input: LevelInput): Level {
+  const slotCount = input.slotCount ?? DEFAULT_SLOT_COUNT;
+  requireInteger(slotCount, 'número de vagas');
+  if (slotCount < 1) throw new RangeError('a fase precisa de ao menos uma vaga');
+  input.queue.forEach((c) => requireInteger(c, 'cor de passageiro'));
+
+  const geometry = buildGeometry(input);
+
+  const seatsByColor = new Map<number, number>();
+  for (const v of geometry.vehicles) {
+    seatsByColor.set(v.color, (seatsByColor.get(v.color) ?? 0) + v.seats);
+  }
+  const passengersByColor = new Map<number, number>();
+  for (const c of input.queue) passengersByColor.set(c, (passengersByColor.get(c) ?? 0) + 1);
+  for (const color of new Set([...seatsByColor.keys(), ...passengersByColor.keys()])) {
+    const seats = seatsByColor.get(color) ?? 0;
+    const passengers = passengersByColor.get(color) ?? 0;
+    if (seats !== passengers) {
+      throw new RangeError(`cor ${color}: ${seats} assentos para ${passengers} passageiros`);
+    }
+  }
+
+  return { ...geometry, queue: [...input.queue], slotCount };
 }

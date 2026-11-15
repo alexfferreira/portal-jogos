@@ -29,31 +29,25 @@ function rejected(
   return { ok: false, reason, state, blockedBy, byObstacle };
 }
 
-/**
- * Manda um veículo sair. Decisão em ordem: veículo desconhecido, caminho bloqueado, sem vaga;
- * senão ele estaciona na vaga livre de menor índice e roda a cascata de embarque. Não altera
- * o estado recebido; em toda recusa devolve esse mesmo objeto.
- */
-export function applyMove(state: State, move: Move): MoveResult {
-  const id = move.vehicle;
-  const { level } = state;
-  if (!Number.isInteger(id) || !state.onBoard.includes(id)) {
-    return rejected(state, 'unknown-vehicle');
-  }
-  if (!isFree(state, id)) {
-    const blockedBy = (level.blockers[id] ?? []).filter((b) => state.onBoard.includes(b));
-    return rejected(state, 'blocked', blockedBy, level.obstructed[id] === true);
-  }
-  const slotIndex = state.slots.findIndex((s) => s === null);
-  if (slotIndex === -1) return rejected(state, 'no-slot');
+/** Resultado da cascata de embarque. */
+export interface Settled {
+  readonly state: State;
+  readonly boardings: readonly Boarding[];
+  readonly departures: readonly Departure[];
+}
 
+/**
+ * Cascata de embarque sobre a fila atual: enquanto o primeiro da fila combinar com a cor de um
+ * veículo estacionado com assento livre (menor vaga primeiro), ele embarca; veículo cheio
+ * parte e libera a vaga. Sem ninguém para embarcar, devolve o mesmo estado e listas vazias.
+ */
+export function settle(state: State): Settled {
+  const { level } = state;
   const slots: (Slot | null)[] = [...state.slots];
-  slots[slotIndex] = { vehicle: id, filled: 0 };
   const boardings: Boarding[] = [];
   const departures: Departure[] = [];
   let queueIndex = state.queueIndex;
 
-  // Cascata: o primeiro da fila embarca no estacionado da mesma cor (menor vaga primeiro).
   while (queueIndex < level.queue.length) {
     const color = level.queue[queueIndex] as number;
     const target = slots.findIndex((s) => {
@@ -75,19 +69,40 @@ export function applyMove(state: State, move: Move): MoveResult {
     }
   }
 
+  if (boardings.length === 0) return { state, boardings, departures };
+  return { state: { ...state, slots, queueIndex }, boardings, departures };
+}
+
+/**
+ * Manda um veículo sair. Decisão em ordem: veículo desconhecido, caminho bloqueado, sem vaga;
+ * senão ele estaciona na vaga livre de menor índice e roda a cascata de embarque. Não altera
+ * o estado recebido; em toda recusa devolve esse mesmo objeto.
+ */
+export function applyMove(state: State, move: Move): MoveResult {
+  const id = move.vehicle;
+  const { level } = state;
+  if (!Number.isInteger(id) || !state.onBoard.includes(id)) {
+    return rejected(state, 'unknown-vehicle');
+  }
+  if (!isFree(state, id)) {
+    const blockedBy = (level.blockers[id] ?? []).filter((b) => state.onBoard.includes(b));
+    return rejected(state, 'blocked', blockedBy, level.obstructed[id] === true);
+  }
+  const slotIndex = state.slots.findIndex((s) => s === null);
+  if (slotIndex === -1) return rejected(state, 'no-slot');
+
+  const slots: (Slot | null)[] = [...state.slots];
+  slots[slotIndex] = { vehicle: id, filled: 0 };
+  const parked: State = { ...state, onBoard: state.onBoard.filter((v) => v !== id), slots };
+  const settled = settle(parked);
+
   return {
     ok: true,
-    state: {
-      level,
-      onBoard: state.onBoard.filter((v) => v !== id),
-      slots,
-      queueIndex,
-      waiting: state.waiting,
-    },
+    state: settled.state,
     move: { vehicle: id },
     slot: slotIndex,
-    boardings,
-    departures,
+    boardings: settled.boardings,
+    departures: settled.departures,
     revealed: level.vehicles[id]?.hidden === true,
   };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createLevel, DEFAULT_SLOT_COUNT, VEHICLE_SPECS } from './level';
+import { rectsOverlap } from './geometry';
+import { buildGeometry, createLevel, DEFAULT_SLOT_COUNT, sweepFor, VEHICLE_SPECS } from './level';
 import { level, veh } from './testkit';
 import { cos, sin, TRIG_SCALE } from './trig';
 
@@ -163,5 +164,36 @@ describe('createLevel: vagas e serialização', () => {
       obstacles: [{ cx: 8000, cy: 8000, w: 600, h: 600, angle: 45 }],
     });
     expect(JSON.parse(JSON.stringify(l))).toEqual(l);
+  });
+});
+
+describe('buildGeometry e sweepFor', () => {
+  const board = { width: 10000, height: 10000 };
+
+  it('dá a mesma geometria que createLevel', () => {
+    const inputs = [veh('car', 0, 1000, 1000, 0), veh('car', 0, 5000, 1000, 0)];
+    const l = level(inputs, zeros(8));
+    const g = buildGeometry({ board, vehicles: inputs });
+    expect(g.board).toEqual(l.board);
+    expect(g.vehicles).toEqual(l.vehicles);
+    expect(g.obstacles).toEqual(l.obstacles);
+    expect(g.blockers).toEqual(l.blockers);
+    expect(g.obstructed).toEqual(l.obstructed);
+  });
+
+  it('valida a geometria (veículos sobrepostos)', () => {
+    expect(() =>
+      buildGeometry({
+        board,
+        vehicles: [veh('car', 0, 1000, 1000, 0), veh('car', 0, 1500, 1000, 0)],
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it('sweepFor é o retângulo varrido: pega quem está à frente, não quem está atrás', () => {
+    const swept = sweepFor(board, 'car', 1000, 1000, 0);
+    const car = (cx: number) => ({ cx, cy: 1000, hl: 600, hw: 300, angle: 0 });
+    expect(rectsOverlap(swept, car(5000))).toBe(true);
+    expect(rectsOverlap(swept, car(-2000))).toBe(false);
   });
 });

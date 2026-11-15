@@ -7,10 +7,12 @@ import {
   isStuck,
   isWin,
   legalMoves,
+  settle,
   visibleColor,
 } from './state';
+import { buildGeometry } from './level';
 import { level, veh } from './testkit';
-import type { MoveApplied, MoveRejected, State } from './types';
+import type { Level, MoveApplied, MoveRejected, State } from './types';
 
 /** Joga o veículo e exige que a jogada seja aplicada. */
 function play(state: State, vehicle: number): MoveApplied {
@@ -217,5 +219,33 @@ describe('imutabilidade e serialização', () => {
     const r = play(createState(level(cars(0, 1), [...rep(0, 4), ...rep(1, 4)])), 0);
     expect(JSON.parse(JSON.stringify(r.state))).toEqual(r.state);
     expect(JSON.parse(JSON.stringify(r))).toEqual(r);
+  });
+});
+
+describe('settle', () => {
+  const provisional = (): Level => ({
+    ...buildGeometry({ board: { width: 10000, height: 10000 }, vehicles: cars(0, 1) }),
+    queue: [],
+    slotCount: 4,
+  });
+
+  it('embarca a fila acrescentada depois de o veículo já estar estacionado', () => {
+    const parked = play(createState(provisional()), 0).state; // fila vazia: nada embarca
+    expect(parked.slots[0]).toEqual({ vehicle: 0, filled: 0 });
+    const r = settle({ ...parked, level: { ...parked.level, queue: rep(0, 4) } });
+    expect(r.boardings).toEqual(
+      [0, 1, 2, 3].map((p) => ({ slot: 0, vehicle: 0, passenger: p, color: 0 })),
+    );
+    expect(r.departures).toEqual([{ slot: 0, vehicle: 0 }]);
+    expect(r.state.queueIndex).toBe(4);
+    expect(r.state.slots[0]).toBeNull();
+  });
+
+  it('sem passageiro compatível devolve o mesmo estado e listas vazias', () => {
+    const s = createState(level(cars(0, 1), [...rep(0, 4), ...rep(1, 4)]));
+    const r = settle(s);
+    expect(r.state).toBe(s);
+    expect(r.boardings).toEqual([]);
+    expect(r.departures).toEqual([]);
   });
 });
