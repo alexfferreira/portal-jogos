@@ -12,7 +12,9 @@ export interface ColorPlan {
   queue: number[];
   /**
    * Pico **simulado** de vagas ocupadas no instante em que um veículo toma a vaga (o alvo da
-   * curva). O pico real, jogando a ordem plantada no motor (`playOrder`), pode ser menor.
+   * curva). O pico real, jogando a ordem plantada no motor (`playOrder`), pode ser menor ou maior:
+   * na fila completa, um grupo liberado depois embarca num estacionado da mesma cor antes do
+   * previsto. O gerador confere e rejeita o que não vence ou passa do alvo.
    */
   peakParked: number;
 }
@@ -23,9 +25,10 @@ const occupied = (state: State): number => state.slots.filter((s) => s !== null)
  * Dá cores aos veículos e monta a fila de passageiros simulando a ordem plantada com o motor
  * real: a cada veículo estacionado, enquanto as vagas ocupadas chegarem ao pico alvo (ou, no
  * fim, enquanto houver alguma), sorteia um estacionado e acrescenta à fila os passageiros que
- * faltam para ele; o `settle` decide em quem eles embarcam. Assim a fila nunca contradiz as
- * regras (por exemplo, quando dois estacionados têm a mesma cor). `null` se uma jogada da
- * ordem plantada for recusada.
+ * faltam para ele; o `settle` decide em quem eles embarcam, então a simulação usa as regras
+ * reais. Mas a fila final está inteira desde o começo, e isso muda quando cada grupo embarca:
+ * a vitória e o pico da ordem plantada **não** são garantidos aqui, e sim pela verificação
+ * com `playOrder` no gerador. `null` se uma jogada da ordem plantada for recusada.
  */
 export function buildColorsAndQueue(
   placed: readonly PlacedVehicle[],

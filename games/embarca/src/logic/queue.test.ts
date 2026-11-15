@@ -38,9 +38,8 @@ describe('buildColorsAndQueue', () => {
           expect(outcome).toMatchObject({ won: true, applied: config.vehicles });
           expect(p.peakParked).toBeLessThanOrEqual(config.peakTarget);
           if (config.vehicles >= config.peakTarget) expect(p.peakParked).toBe(config.peakTarget);
-          // O pico real pode ser menor que o simulado: na fila completa, passageiros liberados
-          // depois embarcam assim que já há um estacionado da cor deles.
-          expect(outcome.peakParked).toBeLessThanOrEqual(p.peakParked);
+          // O pico real pode diferir do simulado (para mais ou para menos): quem garante a fase é
+          // o gerador, que reproduz a ordem e rejeita pico acima do alvo (ver generator.test).
           expect(outcome.peakParked).toBeGreaterThanOrEqual(1);
           const seats = placed.reduce((acc, v) => acc + VEHICLE_SPECS[v.kind].seats, 0);
           expect(p.queue).toHaveLength(seats);

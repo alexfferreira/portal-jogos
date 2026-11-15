@@ -37,7 +37,8 @@ describe('generateLevel: as 200 fases', () => {
       expect(h.move, `fase ${n}: dica`).not.toBeNull();
       expect(g.winRate, `fase ${n}`).toBeLessThanOrEqual(g.config.winRateCap);
       expect(g.solverNodes, `fase ${n}`).toBeGreaterThan(0);
-      expect(g.peakParked, `fase ${n}`).toBeLessThanOrEqual(4);
+      expect(g.peakParked, `fase ${n}`).toBeLessThanOrEqual(g.config.peakTarget);
+      expect(g.peakParked, `fase ${n}`).toBeGreaterThanOrEqual(1);
       for (const a of level.vehicles) {
         for (const b of level.vehicles) {
           if (a.id !== b.id) {

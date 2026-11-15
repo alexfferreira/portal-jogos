@@ -38,7 +38,7 @@ export interface GeneratedLevel {
 
 /**
  * Gera a fase `level` por construção reversa, sempre vencível sem power-ups. Cada variação da
- * semente é aceita só se: a ordem plantada vence no motor real, o solver acha solução dentro
+ * semente é aceita só se: a ordem plantada vence no motor real com o pico real de vagas dentro do alvo da fase, o solver acha solução dentro
  * do limite de nós (então a dica sempre funciona) e as partidas aleatórias vencem menos que o
  * teto da fase. Determinístico: mesma fase e mesmas opções, mesmo resultado.
  */
@@ -74,6 +74,9 @@ export function generateLevel(level: number, options: GenerateOptions = {}): Gen
 
     const outcome = playOrder(built, perm);
     if (!outcome.won || outcome.applied !== placed.length) continue;
+    // O pico real pode passar do alvo (um grupo liberado para um estacionado embarca em outro
+    // da mesma cor, e o previsto fica sem passageiros): a fase fácil ficaria apertada demais.
+    if (outcome.peakParked > config.peakTarget) continue;
     const state = createState(built);
     const solved = solve(state, { maxNodes });
     if (solved.status !== 'solved') continue;
