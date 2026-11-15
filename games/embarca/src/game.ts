@@ -104,6 +104,7 @@ export const embarcaGame: GameModule = {
           ds.geometries = String(info.memory.geometries);
           ds.textures = String(info.memory.textures);
           ds.fps = String(Math.round(frames / clock));
+          ds.confetti = board.hasConfetti ? '1' : '0';
           clock = 0;
           frames = 0;
         }),
@@ -190,6 +191,7 @@ export const embarcaGame: GameModule = {
       ds.hint = activeHint === null ? '' : String(activeHint);
       ds.hand = handTarget === null ? '' : String(handTarget);
       ds.symbols = String(board.visibleSymbols());
+      ds.confetti = board.hasConfetti ? '1' : '0';
     };
 
     /** Mãozinha: a dica tem prioridade (ela já tem o anel); some durante a animação. */
@@ -295,6 +297,7 @@ export const embarcaGame: GameModule = {
         .saveLevels(progress)
         .catch((err: unknown) => console.error('[embarca] falha ao salvar', err));
       ctx.audio.play('win');
+      board.celebrate();
       stateChanged();
       const mine = epoch;
       stage.tweens.add({

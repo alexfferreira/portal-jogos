@@ -348,6 +348,11 @@ export class Board {
     return this.hintRing.object.visible;
   }
 
+  /** Há confete no ar. */
+  get hasConfetti(): boolean {
+    return this.confetti !== null;
+  }
+
   /** Vagas mostradas no momento (4, ou 5 com a vaga extra). */
   get slotCount(): number {
     return this.layout?.slots.length ?? 0;

@@ -92,6 +92,15 @@ describe('Board: confete', () => {
     expect(rootCount(stage)).toBe(before);
   });
 
+  it('hasConfetti acompanha a vida do confete', () => {
+    const { board, stage } = setup();
+    expect(board.hasConfetti).toBe(false);
+    board.celebrate();
+    expect(board.hasConfetti).toBe(true);
+    for (let t = 0; t < 2.6; t += 0.1) stage.frame(0.1);
+    expect(board.hasConfetti).toBe(false);
+  });
+
   it('celebrate seguido de setLevel ou dispose não deixa objetos nem lança', () => {
     const a = setup();
     const before = rootCount(a.stage);

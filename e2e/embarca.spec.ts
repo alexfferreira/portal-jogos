@@ -566,3 +566,70 @@ test.describe('modo daltônico', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('vitória e vazamentos', () => {
+  test('a vitória solta confete, que some sozinho, sem erros', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    await playSolution(page, 1);
+    await expect.poll(() => canvasData(page, 'confetti')).toBe('1');
+    await expect(page.getByRole('dialog', { name: 'Fase concluída' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.screenshot({ path: 'test-results/embarca-confete-390x844.png' });
+    await expect.poll(() => canvasData(page, 'confetti'), { timeout: 10_000 }).toBe('0');
+    expect(errors).toEqual([]);
+  });
+
+  test('foco 5: "Próxima fase" antes de o confete acabar não deixa lixo nem animação', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    await playSolution(page, 1);
+    await expect(page.getByRole('dialog', { name: 'Fase concluída' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByRole('button', { name: 'Próxima fase' }).click();
+    await expect(page.getByTestId('hud-level')).toHaveText('Fase 2');
+    await expect.poll(() => canvasData(page, 'level')).toBe('2');
+    expect(await canvasData(page, 'confetti')).toBe('0');
+    await waitIdle(page);
+    await expectViewMatchesState(page);
+    expect(errors).toEqual([]);
+  });
+
+  for (const colorblind of [false, true]) {
+    test(`vazamento na mesma montagem: Vaga extra e Reiniciar 5 vezes${colorblind ? ' (modo daltônico)' : ''}`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      const errors = collectErrors(page);
+      if (colorblind) {
+        await page.goto('/');
+        await page.getByRole('button', { name: 'Configurações' }).click();
+        const toggle = page.getByRole('switch', { name: 'Modo daltônico' });
+        if ((await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click();
+        await page.waitForTimeout(300);
+      }
+      await openEmbarca(page);
+      await waitFrames(page);
+      const samples: { geometries: string; textures: string }[] = [];
+      for (let i = 0; i < 5; i++) {
+        await page.getByTestId('powerup-extraSlot').click();
+        await expect.poll(() => canvasData(page, 'slots')).toBe('5');
+        await page.getByRole('button', { name: 'Reiniciar' }).click();
+        await expect.poll(() => canvasData(page, 'slots')).toBe('4');
+        await page.waitForTimeout(800); // o diagnóstico é publicado a cada 0,5 s
+        samples.push({
+          geometries: await canvasData(page, 'geometries'),
+          textures: await canvasData(page, 'textures'),
+        });
+      }
+      expect(Number(samples[0]!.geometries)).toBeGreaterThan(0);
+      // Reconstruir a cena (vaga extra e reinício) não pode acumular recursos da GPU.
+      for (const sample of samples.slice(2)) expect(sample).toEqual(samples[1]);
+      expect(errors).toEqual([]);
+    });
+  }
+});
