@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { createState, generateLevel, hint, isFree } from '@recreio/game-embarca/logic';
+import {
+  applyMove,
+  createState,
+  generateLevel,
+  hint,
+  isFree,
+  legalMoves,
+} from '@recreio/game-embarca/logic';
 import { canvasData, collectErrors, waitFrames, waitIdle } from './helpers';
 import {
   expectViewMatchesState,
@@ -395,5 +402,97 @@ test.describe('sem saída (ainda há jogadas, mas não há solução)', () => {
       timeout: 20_000,
     });
     await expect(page.getByRole('dialog', { name: 'Sem saída' })).toHaveCount(0);
+  });
+});
+
+test.describe('tutorial', () => {
+  const TAP = 'Toque em um veículo livre para mandá-lo para uma vaga.';
+  const QUEUE = 'Os passageiros embarcam no veículo da mesma cor, na ordem da fila.';
+  const BLOCKED = 'Um veículo com outro na frente bate e volta. Mande primeiro o que está livre.';
+
+  test('fase 1: texto e mãozinha no primeiro veículo da solução', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    const solution = generateLevel(1).solution;
+    await expect(page.getByTestId('hud-message')).toContainText(TAP);
+    await expect.poll(() => canvasData(page, 'hand')).toBe(String(solution[0]!.vehicle));
+    await page.screenshot({ path: 'test-results/embarca-tutorial-390x844.png' });
+    expect(errors).toEqual([]);
+  });
+
+  test('fase 1: depois de cada jogada a mão passa ao próximo veículo e o texto acompanha a fila', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    const g = generateLevel(1);
+    let state = createState(g.state.level);
+    for (const [i, move] of g.solution.slice(0, -1).entries()) {
+      await tapVehicle(page, move.vehicle);
+      await waitIdle(page);
+      const r = applyMove(state, move);
+      if (!r.ok) throw new Error('jogada da solução recusada');
+      state = r.state;
+      const next = g.solution[i + 1]!.vehicle;
+      await expect.poll(() => canvasData(page, 'hand')).toBe(String(next));
+      const waiting = state.slots.some((s) => s !== null);
+      await expect(page.getByTestId('hud-message')).toContainText(waiting ? QUEUE : TAP);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('foco 5: sair do roteiro faz a mão se refazer pelo Worker', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    const g = generateLevel(1);
+    const initial = createState(g.state.level);
+    const alt = legalMoves(initial)
+      .map((m) => m.vehicle)
+      .find((id) => id !== g.solution[0]!.vehicle);
+    test.skip(alt === undefined, 'a fase 1 só tem um veículo livre');
+    await tapVehicle(page, alt!);
+    await waitIdle(page);
+    const r = applyMove(initial, { vehicle: alt! });
+    if (!r.ok) throw new Error('jogada recusada');
+    const route = hint(r.state);
+    const expected = route.move === null ? '' : String(route.move.vehicle);
+    await expect.poll(() => canvasData(page, 'hand')).toBe(expected);
+    expect(errors).toEqual([]);
+  });
+
+  test('fase 2 explica o bate e volta', async ({ page }) => {
+    const errors = collectErrors(page);
+    await seedEmbarcaLevel(page, 2);
+    await openEmbarca(page);
+    await expect(page.getByTestId('hud-message')).toContainText(BLOCKED);
+    await expect
+      .poll(() => canvasData(page, 'hand'))
+      .toBe(String(generateLevel(2).solution[0]!.vehicle));
+    expect(errors).toEqual([]);
+  });
+
+  test('a fase 3 não tem texto nem mão', async ({ page }) => {
+    const errors = collectErrors(page);
+    await seedEmbarcaLevel(page, 3);
+    await openEmbarca(page);
+    await waitFrames(page);
+    expect(await canvasData(page, 'hand')).toBe('');
+    await expect(page.getByTestId('hud-message')).toHaveText('');
+    expect(errors).toEqual([]);
+  });
+
+  test('a dica tem prioridade sobre a mão e na vitória a mão some', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openEmbarca(page);
+    await expect.poll(() => canvasData(page, 'hand')).not.toBe('');
+    await page.getByTestId('powerup-hint').click();
+    await expect.poll(() => canvasData(page, 'hint')).not.toBe('');
+    expect(await canvasData(page, 'hand')).toBe('');
+    await playSolution(page, 1);
+    await expect(page.getByRole('dialog', { name: 'Fase concluída' })).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await canvasData(page, 'hand')).toBe('');
+    expect(errors).toEqual([]);
   });
 });

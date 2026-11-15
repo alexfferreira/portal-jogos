@@ -6,10 +6,10 @@ import {
   type PowerUpState,
 } from '@recreio/core';
 import { createLevelLoader } from './levelLoader';
-import { Session, type GeneratedLevel, type State } from './logic';
+import { Session, type GeneratedLevel, type Move, type State } from './logic';
 import { EMBARCA_ID, messages, meta } from './meta';
 import { Board } from './render/board';
-import { hasTutorial } from './render/tutorial';
+import { followRoute, hasTutorial, tutorialStep, type TutorialStep } from './render/tutorial';
 import { CancelledError, createLogicClient, type LogicClient } from './worker';
 
 /** Enquadramento provisório até a primeira fase ser montada. */
@@ -17,6 +17,7 @@ const INITIAL_BOUNDS = { width: 6.6, depth: 14 };
 /** Pausa entre a última jogada e o aviso "Fase concluída". */
 const WIN_DELAY = 0.8;
 const BACKGROUND = 0xcfe8ff;
+const NO_STEP: TutorialStep = { hand: null, message: null };
 
 /**
  * Dados de teste no canvas (`data-*`): só quando o build/execução de teste liga `VITE_E2E=1`.
@@ -128,8 +129,24 @@ export const embarcaGame: GameModule = {
     let activeHint: number | null = null;
     /** Aviso passageiro da dica ("não achei"); some na próxima mudança de estado. */
     let hintNoteKey: string | null = null;
+    /** Solução do estado atual (tutorial); `null` = desconhecida, recalcular pelo Worker. */
+    let route: Move[] | null = hasTutorial(level) ? [...first.solution] : null;
+    let initialRoute: Move[] = first.solution;
+    /** Jogada em animação: a mãozinha some até ela terminar. */
+    let moving = false;
+    let handTarget: number | null = null;
 
     // --- HUD e diagnóstico ----------------------------------------------------------
+
+    /** Passo do tutorial: que veículo apontar e que texto mostrar. */
+    const currentStep = (): TutorialStep =>
+      won || busy
+        ? NO_STEP
+        : tutorialStep(
+            level,
+            route?.[0] ?? null,
+            session.state.slots.filter((slot) => slot !== null).length,
+          );
 
     const emitHud = (): void => {
       const r = session.remaining;
@@ -158,7 +175,7 @@ export const embarcaGame: GameModule = {
         },
       ];
       const hud: HudState = { level, powerUps };
-      const message = errorKey ?? hintNoteKey;
+      const message = errorKey ?? hintNoteKey ?? currentStep().message;
       if (message !== null) hud.message = message;
       ctx.events.emit('hud', hud);
     };
@@ -171,9 +188,35 @@ export const embarcaGame: GameModule = {
       ds.bumps = String(session.bumps);
       ds.slots = String(session.state.slots.length);
       ds.hint = activeHint === null ? '' : String(activeHint);
+      ds.hand = handTarget === null ? '' : String(handTarget);
     };
 
-    /** Qualquer mudança de estado: HUD e dados de teste em dia. */
+    /** Mãozinha: a dica tem prioridade (ela já tem o anel); some durante a animação. */
+    const refreshHand = (): void => {
+      handTarget = activeHint !== null || moving ? null : currentStep().hand;
+      board.setHand(handTarget);
+      ds.hand = handTarget === null ? '' : String(handTarget);
+    };
+
+    /** Se o jogador saiu do roteiro (ou desfez), a solução do estado atual vem do Worker. */
+    const ensureRoute = (): void => {
+      if (!hasTutorial(level) || route !== null || won || busy) return;
+      const v = version;
+      const e = epoch;
+      client
+        .hint(session.state)
+        .then((res) => {
+          if (destroyed || v !== version || e !== epoch) return;
+          route = res.moves;
+          refreshHand();
+          emitHud();
+        })
+        .catch((err: unknown) => {
+          if (!(err instanceof CancelledError)) console.error('[embarca] falha no roteiro', err);
+        });
+    };
+
+    /** Qualquer mudança de estado: HUD, mãozinha e dados de teste em dia. */
     const stateChanged = (): void => {
       version++;
       hintNoteKey = null;
@@ -181,8 +224,10 @@ export const embarcaGame: GameModule = {
         activeHint = null;
         board.setHint(null);
       }
+      refreshHand();
       emitHud();
       syncDataset();
+      ensureRoute();
     };
 
     const showNoMoves = (reason: 'stuck' | 'unsolvable'): void => {
@@ -264,6 +309,7 @@ export const embarcaGame: GameModule = {
 
     const onMoveDone = (mine: number): void => {
       if (destroyed || mine !== epoch) return;
+      moving = false;
       if (session.won) {
         win();
         return;
@@ -279,6 +325,9 @@ export const embarcaGame: GameModule = {
     const applyLevel = (gen: GeneratedLevel): void => {
       epoch++;
       session = new Session(gen.state.level);
+      initialRoute = gen.solution;
+      route = hasTutorial(level) ? [...initialRoute] : null;
+      moving = false;
       won = false;
       busy = false;
       failedTarget = null;
@@ -320,12 +369,17 @@ export const embarcaGame: GameModule = {
       if (result.ok) {
         ctx.audio.play('click');
         const mine = epoch;
+        route = route ? followRoute(route, { vehicle }) : null;
+        moving = true;
         stateChanged();
         board.playMove(before, { vehicle }, result, result.state, () => onMoveDone(mine));
       } else {
         // O som de erro toca no instante do impacto (o `Board` cuida disso).
         if (result.reason !== 'unknown-vehicle') ctx.haptics.tap(40);
-        board.playMove(before, { vehicle }, result, before, () => syncDataset());
+        board.playMove(before, { vehicle }, result, before, () => {
+          syncDataset();
+          refreshHand(); // o tabuleiro apaga a mão ao reconciliar
+        });
         syncDataset();
       }
     };
@@ -351,6 +405,7 @@ export const embarcaGame: GameModule = {
         if (!session.spendHint()) return;
         activeHint = res.move.vehicle;
         board.setHint(activeHint);
+        refreshHand();
         ctx.audio.play('click');
       } catch (err) {
         if (!(err instanceof CancelledError)) console.error('[embarca] falha na dica', err);
@@ -369,6 +424,7 @@ export const embarcaGame: GameModule = {
       const out = session.undo();
       if (!out.ok) return;
       ctx.audio.play('click');
+      route = null;
       board.setState(out.state);
       stateChanged();
       updateStuck();
@@ -408,6 +464,8 @@ export const embarcaGame: GameModule = {
       errorKey = null;
       epoch++;
       hintPending = false;
+      route = hasTutorial(level) ? [...initialRoute] : null;
+      moving = false;
       const state = session.restart();
       won = false;
       busy = false;
@@ -420,8 +478,7 @@ export const embarcaGame: GameModule = {
     // --- ciclo inicial --------------------------------------------------------------
 
     board.setLevel(first.state.level, session.state);
-    emitHud();
-    syncDataset();
+    stateChanged();
     updateStuck();
     startPrefetch();
 

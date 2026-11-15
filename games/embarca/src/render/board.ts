@@ -304,6 +304,7 @@ export class Board {
 
   /** Mãozinha tocando no centro do veículo; `null` esconde. */
   setHand(vehicleId: number | null): void {
+    if (vehicleId === this.handVehicle) return; // não reinicia o pulso à toa
     this.handVehicle = vehicleId;
     this.clock = 0;
     if (vehicleId === null) this.hand.hide();
@@ -328,7 +329,9 @@ export class Board {
     this.clock += dt;
     if (this.hintRing.object.visible) this.hintRing.update(this.clock);
     if (this.handVehicle !== null) {
-      const point = this.vehicleCenter(this.handVehicle);
+      const point = this.shownOnBoard.includes(this.handVehicle)
+        ? this.vehicleCenter(this.handVehicle)
+        : null;
       if (point === null) this.hand.hide();
       else {
         const pose = handPulse(this.clock);
