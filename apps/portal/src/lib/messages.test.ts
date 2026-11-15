@@ -1,4 +1,5 @@
 import { LOCALES } from '@recreio/core';
+import { messages as embarcaMessages } from '@recreio/game-embarca/meta';
 import { messages as misturaMessages } from '@recreio/game-mistura/meta';
 import { describe, expect, it } from 'vitest';
 import { portalMessages } from './messages';
@@ -14,8 +15,17 @@ describe('textos do portal', () => {
     for (const l of LOCALES) expect(Object.keys(misturaMessages[l]).sort()).toEqual(base);
   });
 
+  it('a Embarca tem as mesmas chaves nos três idiomas', () => {
+    const base = Object.keys(embarcaMessages['pt-BR']).sort();
+    for (const l of LOCALES) expect(Object.keys(embarcaMessages[l]).sort()).toEqual(base);
+  });
+
   it('sem exclamação e sem "por favor"', () => {
-    for (const dict of [...Object.values(portalMessages), ...Object.values(misturaMessages)]) {
+    for (const dict of [
+      ...Object.values(portalMessages),
+      ...Object.values(misturaMessages),
+      ...Object.values(embarcaMessages),
+    ]) {
       for (const text of Object.values(dict)) expect(text).not.toMatch(/!|por favor|please/i);
     }
   });
