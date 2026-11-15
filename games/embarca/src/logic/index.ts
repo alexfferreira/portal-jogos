@@ -1,3 +1,4 @@
+export { levelConfig, type LevelConfig } from './config';
 export { playOrder, randomPlayoutWinRate, type PlayOutcome } from './difficulty';
 export { rectsOverlap, sweepRect, type Rect } from './geometry';
 export {
@@ -22,6 +23,7 @@ export {
   type PowerUps,
   type UndoOutcome,
 } from './session';
+export { mixSeed } from './seed';
 export {
   canonicalKey,
   embarcaProblem,
