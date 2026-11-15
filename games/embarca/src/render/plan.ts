@@ -12,24 +12,43 @@ import {
 } from '../logic';
 import { contactDistance, UNIT, type Layout, type WorldPoint } from './layout';
 
-/** Velocidade na perna reta (unidades por segundo). */
-export const DRIVE_SPEED = 12;
-export const PARK_DURATION = 0.45;
+/** Velocidade média do voo até a vaga (unidades por segundo) e limites da duração. */
+export const FLIGHT_SPEED = 16;
+export const MIN_FLIGHT_DURATION = 0.6;
+export const MAX_FLIGHT_DURATION = 1.5;
 export const BOARD_DURATION = 0.22;
 export const BOARD_STAGGER = 0.06;
 /** O escalonamento dos embarques nunca passa disto (em segundos). */
 const MAX_STAGGER = 0.6;
 export const DEPART_DURATION = 0.4;
-export const BUMP_DURATION = 0.3;
+/** Velocidade da batida na ida (unidades por segundo); a volta é mais rápida. */
+export const BUMP_SPEED = 14;
+export const BUMP_RETURN_FACTOR = 1.8;
+export const MIN_BUMP_FORWARD = 0.18;
+export const MIN_BUMP_BACK = 0.22;
 export const SHAKE_DURATION = 0.25;
-/** Quanto o veículo avança, no máximo, numa batida (unidades). */
-export const MAX_BUMP_TRAVEL = 1.2;
+/** Direção do veículo estacionado: de frente para a fila de passageiros (para baixo na tela). */
+export const PARKED_HEADING = -Math.PI / 2;
 
-const MIN_LEG_DURATION = 0.25;
-/** Folga além da borda do tabuleiro em que a perna reta termina (unidades). */
+/** Quanto o veículo anda em linha reta ao longo da seta antes de começar a curva (unidades). */
+const TAKEOFF = 1.2;
+/** Folga além da borda do tabuleiro usada para limitar a decolagem (unidades). */
 const EXIT_MARGIN = 0.3;
-const CURVE_SAMPLES = 12;
-const UP = Math.PI / 2;
+/** Passo do voo (unidades), raio mínimo da curva e ponto da linha da vaga que ele persegue. */
+const STEP = 0.12;
+const RADIUS = 1;
+const MIN_LOOKAHEAD = 1.5;
+const LOOKAHEAD_PER_OFFSET = 0.8;
+const MAX_FLIGHT_STEPS = 900;
+/** Distância (unidades) acima da vaga do portão, e desalinhamento aceito para descer. */
+const GATE_ABOVE = 1.6;
+const ALIGNED = 0.1;
+/** Desalinhamento máximo aceito ao chegar na altura da vaga (o pouso corrige o resto). */
+const LANDING_OFFSET = 0.5;
+/** Pontos do pouso e distância (unidades) da altura da vaga a partir da qual ele começa. */
+const LANDING_SAMPLES = 8;
+/** O voo para um passo antes da altura da vaga: nunca passa dela e volta. */
+const ARRIVED = STEP;
 
 export interface PathPoint {
   x: number;
@@ -68,7 +87,10 @@ export type Step =
   | {
       kind: 'bump';
       vehicle: number;
+      /** Até onde o veículo vai antes de bater (unidades): o contato de verdade. */
       forward: number;
+      /** Tempo da ida; o resto de `duration` é a volta. */
+      forwardDuration: number;
       blockers: number[];
       duration: number;
       delay: number;
@@ -86,7 +108,7 @@ const finish = (steps: Step[]): MovePlan => ({
   total: steps.reduce((acc, s) => Math.max(acc, s.delay + s.duration), 0),
 });
 
-/** Distância, a partir de `from` na direção `dir`, até sair da caixa (com folga). */
+/** Distância, a partir de `from` na direção `dir`, até sair da caixa do tabuleiro (com folga). */
 function distanceToExit(
   layout: Layout,
   from: WorldPoint,
@@ -114,33 +136,73 @@ function distanceToExit(
   );
 }
 
-/** Curva cúbica de Bézier amostrada, com o `heading` dado pela tangente. */
-function bezier(p0: WorldPoint, p1: WorldPoint, p2: WorldPoint, p3: WorldPoint): PathPoint[] {
-  const at = (t: number): WorldPoint => {
-    const u = 1 - t;
-    return {
-      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
-      z: u * u * u * p0.z + 3 * u * u * t * p1.z + 3 * u * t * t * p2.z + t * t * t * p3.z,
-    };
-  };
+/**
+ * Voo até a vaga com **raio de curva mínimo**, como um carro de verdade: a cada passo o veículo
+ * vira em direção a um ponto da linha vertical da vaga, um pouco à frente, sem passar da
+ * curvatura máxima. Uma meia-volta sai como um arco largo (nunca como um rebote) e a chegada é
+ * sempre de cima, descendo pela linha da vaga, de frente para a fila.
+ */
+function fly(from: WorldPoint, fromHeading: number, slot: WorldPoint): PathPoint[] {
   const out: PathPoint[] = [];
-  for (let i = 1; i <= CURVE_SAMPLES; i++) {
-    const t = i / CURVE_SAMPLES;
-    const p = at(t);
-    const q = at(Math.min(1, t + 0.01));
-    const back = at(Math.max(0, t - 0.01));
-    const heading = Math.atan2(-(q.z - back.z), q.x - back.x);
-    out.push({ x: p.x, z: p.z, heading });
+  const gate = slot.z - GATE_ABOVE;
+  let x = from.x;
+  let z = from.z;
+  let h = fromHeading;
+  for (let i = 0; i < MAX_FLIGHT_STEPS; i++) {
+    // Só termina na altura da vaga se já estiver alinhado com ela.
+    if (z >= slot.z - ARRIVED && Math.abs(slot.x - x) <= LANDING_OFFSET) break;
+    const dx = slot.x - x;
+    const offset = Math.abs(dx);
+    // Virar para baixo (raio RADIUS) desloca o carro `RADIUS * (1 + sen h)` na horizontal:
+    // começa a descer quando esse deslocamento leva exatamente à linha da vaga.
+    const towardLine = Math.sign(Math.cos(h)) === Math.sign(dx) || Math.abs(Math.cos(h)) < 0.3;
+    const ready = towardLine && offset <= RADIUS * (1 + Math.sin(h)) + ALIGNED;
+    const lookahead = Math.max(MIN_LOOKAHEAD, LOOKAHEAD_PER_OFFSET * offset);
+    // Antes de estar pronto, não desce além do portão: primeiro se alinha, depois desce.
+    // Se escorregou para baixo do portão, sobe de novo em arco antes de descer alinhado.
+    const carrot = { x: slot.x, z: Math.min(ready ? slot.z : gate, z + lookahead) };
+    const bearing = Math.atan2(-(carrot.z - z), carrot.x - x);
+    h += Math.max(-STEP / RADIUS, Math.min(STEP / RADIUS, wrapAngle(bearing - h)));
+    x += Math.cos(h) * STEP;
+    z -= Math.sin(h) * STEP;
+    out.push({ x, z, heading: h });
   }
-  // O último ponto é exatamente o centro da vaga, de frente para cima na tela.
-  out[out.length - 1] = { x: p3.x, z: p3.z, heading: UP };
+  // Pouso: os últimos pontos até a vaga, girando para a direção de estacionado.
+  const arrival = h;
+  const turn = wrapAngle(PARKED_HEADING - arrival);
+  for (let i = 1; i <= LANDING_SAMPLES; i++) {
+    const t = i / LANDING_SAMPLES;
+    out.push({
+      x: x + (slot.x - x) * t,
+      z: z + (slot.z - z) * t,
+      heading: i === LANDING_SAMPLES ? PARKED_HEADING : arrival + turn * t,
+    });
+  }
   return out;
 }
 
+const wrapAngle = (a: number): number => {
+  let r = a;
+  while (r > Math.PI) r -= 2 * Math.PI;
+  while (r < -Math.PI) r += 2 * Math.PI;
+  return r;
+};
+
+const pathLength = (path: readonly PathPoint[]): number => {
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1] as PathPoint;
+    const b = path[i] as PathPoint;
+    total += Math.hypot(b.x - a.x, b.z - a.z);
+  }
+  return total;
+};
+
 /**
- * Plano da jogada `move` aplicada a `before`. Aplicada: sair, estacionar, embarcar e partir.
- * Recusada: bater e voltar (caminho bloqueado) ou balançar (sem vaga); vazio se o veículo
- * não existe.
+ * Plano da jogada `move` aplicada a `before`. Aplicada: decolar ao longo da seta, voar em arco
+ * até a vaga (entrando de cima, de frente para a fila), embarcar e partir. Recusada: bater e
+ * voltar (caminho bloqueado: vai até o contato de verdade) ou balançar (sem vaga); vazio se o
+ * veículo não existe.
  */
 export function planMove(
   before: State,
@@ -153,21 +215,25 @@ export function planMove(
 
   if (!result.ok) {
     if (result.reason === 'blocked') {
-      const maxMilli = Math.round(MAX_BUMP_TRAVEL * UNIT);
+      const { width, height } = before.level.board;
       const milli = contactDistance(
         before.level,
         move.vehicle,
         result.blockedBy,
         before.onBoard,
-        maxMilli,
+        width + height,
       );
+      const forward = milli / UNIT;
+      const forwardDuration = Math.max(MIN_BUMP_FORWARD, forward / BUMP_SPEED);
+      const back = Math.max(MIN_BUMP_BACK, forward / (BUMP_SPEED * BUMP_RETURN_FACTOR));
       return finish([
         {
           kind: 'bump',
           vehicle: move.vehicle,
-          forward: Math.min(milli / UNIT, MAX_BUMP_TRAVEL),
+          forward,
+          forwardDuration,
           blockers: [...result.blockedBy],
-          duration: BUMP_DURATION,
+          duration: forwardDuration + back,
           delay: 0,
         },
       ]);
@@ -182,22 +248,25 @@ export function planMove(
   const dir = { x: Math.cos(heading), z: -Math.sin(heading) };
   const start = layout.toWorld(vehicle.cx, vehicle.cy);
   const half = VEHICLE_SPECS[vehicle.kind].length / 2 / UNIT;
-  const leg = distanceToExit(layout, start, dir, half + EXIT_MARGIN);
-  const exit: WorldPoint = { x: start.x + dir.x * leg, z: start.z + dir.z * leg };
+  const lead = Math.min(TAKEOFF, distanceToExit(layout, start, dir, half + EXIT_MARGIN));
+  const takeoff: WorldPoint = { x: start.x + dir.x * lead, z: start.z + dir.z * lead };
   const slot = layout.slotCenter(result.slot);
-  const curve = bezier(
-    exit,
-    { x: exit.x + dir.x * 2, z: exit.z + dir.z * 2 },
-    { x: slot.x, z: slot.z + 1.5 },
-    slot,
+  // Voa em um arco só: decola ao longo da seta e entra na vaga por cima, descendo.
+  const path: PathPoint[] = [
+    { x: start.x, z: start.z, heading },
+    { x: takeoff.x, z: takeoff.z, heading },
+    ...fly(takeoff, heading, slot),
+  ];
+  const driveDuration = Math.min(
+    MAX_FLIGHT_DURATION,
+    Math.max(MIN_FLIGHT_DURATION, pathLength(path) / FLIGHT_SPEED),
   );
-  const driveDuration = Math.max(MIN_LEG_DURATION, leg / DRIVE_SPEED) + PARK_DURATION;
   const steps: Step[] = [
     {
       kind: 'drive',
       vehicle: move.vehicle,
       slot: result.slot,
-      path: [{ x: start.x, z: start.z, heading }, { x: exit.x, z: exit.z, heading }, ...curve],
+      path,
       duration: driveDuration,
       delay: 0,
     },
@@ -228,7 +297,7 @@ export function planMove(
       vehicle: d.vehicle,
       slot: d.slot,
       path: [
-        { x: from.x, z: from.z, heading: UP },
+        { x: from.x, z: from.z, heading: PARKED_HEADING },
         { x: offX, z: from.z, heading: 0 },
       ],
       duration: DEPART_DURATION,

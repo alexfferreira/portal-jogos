@@ -22,7 +22,7 @@ export const UNIT = 1000;
 /** Altura da linha de vagas (cabe um ônibus de 2,4 de comprimento em pé). */
 export const SLOT_HEIGHT = 2.6;
 /** Distância entre passageiros da fila. */
-export const QUEUE_SPACING = 0.26;
+export const QUEUE_SPACING = 0.34;
 /** Raio (px) em volta do toque em que um veículo ainda conta como tocado (alvo de 44 px). */
 export const PICK_RADIUS_PX = 22;
 

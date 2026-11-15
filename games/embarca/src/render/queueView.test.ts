@@ -34,6 +34,14 @@ describe('QueueView', () => {
     view.dispose();
   });
 
+  it('o passageiro é grande o bastante para se ver (raio de pelo menos 0,12)', () => {
+    const view = new QueueView(layout, level.queue, 'high');
+    view.mesh.geometry.computeBoundingBox();
+    const box = view.mesh.geometry.boundingBox!;
+    expect((box.max.x - box.min.x) / 2).toBeGreaterThanOrEqual(0.12 - 1e-6);
+    view.dispose();
+  });
+
   it('cada instância tem a cor do passageiro na paleta', () => {
     const view = new QueueView(layout, level.queue, 'high');
     const c = new Color();

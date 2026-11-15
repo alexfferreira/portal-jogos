@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { applyMove, createState, type MoveApplied, type State } from '../logic';
+import { applyMove, createState, generateLevel, type MoveApplied, type State } from '../logic';
 import { level, scenarioLevel, veh } from '../logic/testkit';
 import { computeLayout, UNIT } from './layout';
-import { BOARD_DURATION, MAX_BUMP_TRAVEL, planMove, type Step, type MovePlan } from './plan';
+import {
+  BOARD_DURATION,
+  PARKED_HEADING,
+  planMove,
+  type MovePlan,
+  type PathPoint,
+  type Step,
+} from './plan';
 
 const scenario = scenarioLevel();
 const layout = computeLayout(scenario);
@@ -35,15 +42,71 @@ describe('planMove: jogada aplicada', () => {
     expect(d.delay).toBe(0);
   });
 
-  it('a perna reta sai pela borda do tabuleiro na direção da seta', () => {
+  it('decola ao longo da seta e termina na vaga, de frente para a fila', () => {
     const d = ofKind(plan, 'drive')[0]!;
-    const end = d.path[1]!;
-    const b = layout.board;
-    const inside = Math.abs(end.x - b.cx) <= b.width / 2 && Math.abs(end.z - b.cz) <= b.depth / 2;
-    expect(inside).toBe(false);
-    // O carro 1 aponta para +x (0°): a perna reta segue para a direita.
-    expect(end.x).toBeGreaterThan(d.path[0]!.x);
-    expect(end.z).toBeCloseTo(d.path[0]!.z);
+    const [from, takeoff] = d.path;
+    // O carro 1 aponta para +x (0°): decola para a direita, sem sair do eixo.
+    expect(takeoff!.x - from!.x).toBeGreaterThan(0.5);
+    expect(takeoff!.z).toBeCloseTo(from!.z);
+    expect(takeoff!.heading).toBeCloseTo(from!.heading);
+    expect(d.path.at(-1)!.heading).toBeCloseTo(PARKED_HEADING);
+  });
+
+  it('o voo fica perto do enquadramento e pousa alinhado com a vaga, sem atravessar em linha reta', () => {
+    let maxOut = 0;
+    let maxLanding = 0;
+    for (let n = 1; n <= 30; n++) {
+      const g = generateLevel(n);
+      const l = computeLayout(g.state.level);
+      let s = createState(g.state.level);
+      for (const m of g.solution) {
+        const r = apply(s, m.vehicle);
+        const path = ofKind(planMove(s, m, r, l), 'drive')[0]!.path;
+        for (const p of path) maxOut = Math.max(maxOut, Math.abs(p.x) - l.width / 2);
+        // A descida final (últimos 8 pontos): o deslocamento lateral é pequeno.
+        const start = path[path.length - 9]!;
+        const end = path.at(-1)!;
+        maxLanding = Math.max(maxLanding, Math.abs(end.x - start.x));
+        s = r.state;
+      }
+    }
+    // Nenhum ponto a mais de 4 unidades fora do enquadramento; pouso com no máximo 0,6 de salto.
+    expect(maxOut).toBeLessThan(4);
+    expect(maxLanding).toBeLessThan(0.6);
+  });
+
+  it('o caminho até a vaga é suave: sem cúspide nem rebote em nenhuma jogada das fases 1 a 30', () => {
+    const turn = (a: PathPoint, b: PathPoint, c: PathPoint): number => {
+      const v1 = { x: b.x - a.x, z: b.z - a.z };
+      const v2 = { x: c.x - b.x, z: c.z - b.z };
+      const n = Math.hypot(v1.x, v1.z) * Math.hypot(v2.x, v2.z);
+      if (n < 1e-9) return 0;
+      return Math.acos(Math.max(-1, Math.min(1, (v1.x * v2.x + v1.z * v2.z) / n)));
+    };
+    let worst = 0;
+    let worstHeading = 0;
+    for (let n = 1; n <= 30; n++) {
+      const g = generateLevel(n);
+      const l = computeLayout(g.state.level);
+      let s = createState(g.state.level);
+      for (const m of g.solution) {
+        const r = apply(s, m.vehicle);
+        const path = ofKind(planMove(s, m, r, l), 'drive')[0]!.path;
+        for (let i = 2; i < path.length; i++) {
+          worst = Math.max(worst, turn(path[i - 2]!, path[i - 1]!, path[i]!));
+        }
+        for (let i = 1; i < path.length; i++) {
+          let dh = path[i]!.heading - path[i - 1]!.heading;
+          while (dh > Math.PI) dh -= 2 * Math.PI;
+          while (dh < -Math.PI) dh += 2 * Math.PI;
+          worstHeading = Math.max(worstHeading, Math.abs(dh));
+        }
+        s = r.state;
+      }
+    }
+    // Menos de 40° entre segmentos consecutivos e menos de 50° de giro entre pontos vizinhos.
+    expect(worst).toBeLessThan((40 * Math.PI) / 180);
+    expect(worstHeading).toBeLessThan((50 * Math.PI) / 180);
   });
 
   it('quatro embarques saem da fila para a vaga, escalonados depois do drive', () => {
@@ -98,7 +161,7 @@ describe('planMove: jogada aplicada', () => {
 });
 
 describe('planMove: jogada recusada', () => {
-  it('bloqueada: bate e volta, no máximo MAX_BUMP_TRAVEL, com os bloqueadores', () => {
+  it('bloqueada: bate e volta, indo até o contato mesmo com o bloqueador longe', () => {
     const start = createState(scenario);
     const r = applyMove(start, { vehicle: 0 });
     if (r.ok) throw new Error('deveria recusar');
@@ -107,8 +170,11 @@ describe('planMove: jogada recusada', () => {
     expect(bumps).toHaveLength(1);
     expect(bumps[0]!.vehicle).toBe(0);
     expect(bumps[0]!.blockers).toEqual([1]);
-    expect(bumps[0]!.forward).toBeGreaterThan(0);
-    expect(bumps[0]!.forward).toBeLessThanOrEqual(MAX_BUMP_TRAVEL);
+    // Carro 0 em (1500,1500) e carro 1 em (6000,1500): as frentes se encontram a 3300.
+    expect(bumps[0]!.forward).toBeCloseTo(3.3, 1);
+    // Ida até o contato mais volta.
+    expect(bumps[0]!.forwardDuration).toBeGreaterThan(0.18);
+    expect(bumps[0]!.duration).toBeGreaterThan(bumps[0]!.forwardDuration);
     expect(plan.steps).toHaveLength(1);
   });
 

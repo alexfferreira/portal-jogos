@@ -16,8 +16,8 @@ import {
 } from 'three';
 import type { Layout } from './layout';
 
-const RADIUS = 0.09;
-const BODY = 0.12;
+const RADIUS = 0.12;
+const BODY = 0.16;
 /** Altura do centro da cápsula (de pé no chão). */
 const CENTER_Y = RADIUS + BODY / 2;
 

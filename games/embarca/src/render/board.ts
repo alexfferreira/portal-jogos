@@ -29,7 +29,7 @@ import {
   type State,
 } from '../logic';
 import { computeLayout, pickVehicle, type Layout, type WorldPoint } from './layout';
-import { planMove, type PathPoint, type Step } from './plan';
+import { PARKED_HEADING, planMove, type PathPoint, type Step } from './plan';
 import { QueueView } from './queueView';
 import { SlotsView } from './slotsView';
 import { createVehicleView, placeVehicle, VehicleAssets } from './vehicleView';
@@ -56,7 +56,6 @@ export interface BoardOptions {
   onLayout?(boxes: ScreenBox[]): void;
 }
 
-const UP = Math.PI / 2;
 const SLOT_LIFT = 0.04;
 /** Altura do veículo em deslocamento: acima do teto do ônibus (~0,8), para não atravessar ninguém. */
 const TRAVEL_LIFT = 1.0;
@@ -205,7 +204,7 @@ export class Board {
         placeVehicle(view, layout.toWorld(v.cx, v.cy), (v.angle * Math.PI) / 180, 0);
       } else if (slot !== undefined && slot < layout.slots.length) {
         view.visible = true;
-        placeVehicle(view, layout.slotCenter(slot), UP, SLOT_LIFT);
+        placeVehicle(view, layout.slotCenter(slot), PARKED_HEADING, SLOT_LIFT);
       } else {
         view.visible = false;
       }
@@ -338,7 +337,7 @@ export class Board {
             const layout = this.layout;
             const vehicle = this.level?.vehicles[step.vehicle];
             if (view !== undefined && layout !== null) {
-              placeVehicle(view, layout.slotCenter(step.slot), UP, SLOT_LIFT);
+              placeVehicle(view, layout.slotCenter(step.slot), PARKED_HEADING, SLOT_LIFT);
             }
             if (vehicle !== undefined) {
               this.liveSlots[step.slot] = { vehicle: step.vehicle, filled: 0 };
@@ -426,12 +425,21 @@ export class Board {
       return;
     }
     const dir = { x: Math.cos(home.heading), z: -Math.sin(home.heading) };
+    const back = step.duration - step.forwardDuration;
     this.track({
       ...base,
       onUpdate: (t) => {
-        const off = step.forward * Math.sin(Math.PI * t);
+        const time = t * step.duration;
+        // Ida acelerando até o contato; depois a volta, desacelerando até o lugar de origem.
+        const off =
+          time < step.forwardDuration
+            ? step.forward * (time / step.forwardDuration) ** 2
+            : step.forward * (1 - easing.outCubic((time - step.forwardDuration) / back));
         placeVehicle(view, { x: home.p.x + dir.x * off, z: home.p.z + dir.z * off }, home.heading);
-        const wiggle = 0.05 * Math.sin(Math.PI * 3 * t) * (1 - t);
+        // O bloqueador estremece só depois do impacto.
+        const after = Math.max(0, time - step.forwardDuration) / back;
+        const wiggle =
+          time < step.forwardDuration ? 0 : 0.06 * Math.sin(Math.PI * 4 * after) * (1 - after);
         for (const id of step.blockers) {
           const b = this.views.get(id);
           const h = this.home(id);

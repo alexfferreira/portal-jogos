@@ -5,6 +5,7 @@ import { applyMove, createState, type MoveApplied, type MoveRejected, type State
 import { level as buildLevel, scenarioLevel, veh } from '../logic/testkit';
 import { Board, type BoardStage } from './board';
 import { computeLayout } from './layout';
+import { PARKED_HEADING, planMove } from './plan';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -140,11 +141,34 @@ describe('Board: jogadas', () => {
   });
 
   it('um veículo que estaciona sem embarque fica na vaga com os assentos vazios', () => {
-    const { board, state } = setup();
+    const { board, state, stage } = setup();
     const r = apply(state, 4); // ônibus: a fila começa em cor 0, ninguém embarca
     board.playMove(state, { vehicle: 4 }, r, r.state, () => {});
     board.finishAnimations();
     expect(board.viewString()).toBe('b:0,1,2,3,5|s:4,-,-,-|q:0');
+    // Estacionado de frente para a fila de passageiros (para baixo na tela).
+    const bus = vehicleGroups(stage.scene).find((g) => g.userData.vehicleId === 4)!;
+    expect(bus.rotation.y).toBeCloseTo(PARKED_HEADING);
+  });
+
+  it('bater e voltar com o bloqueador longe: chega ao contato antes de voltar', () => {
+    const far = buildLevel(
+      [veh('car', 0, 1000, 1000, 0), veh('car', 0, 9000, 1000, 0)],
+      Array<number>(8).fill(0),
+    );
+    const { board, state, stage } = setup(far);
+    const r = applyMove(state, { vehicle: 0 });
+    if (r.ok) throw new Error('deveria recusar');
+    const step = planMove(state, { vehicle: 0 }, r, computeLayout(far)).steps[0]!;
+    if (step.kind !== 'bump') throw new Error('esperava uma batida');
+    expect(step.forward).toBeGreaterThan(5); // bem mais que o antigo teto de 1,2
+    const group = vehicleGroups(stage.scene).find((g) => g.userData.vehicleId === 0)!;
+    const home = group.position.clone();
+    board.playMove(state, { vehicle: 0 }, r, state, () => {});
+    stage.tweens.update(step.forwardDuration); // o instante do impacto
+    expect(group.position.distanceTo(home)).toBeGreaterThan(step.forward - 0.05);
+    stage.run(board);
+    expect(group.position.distanceTo(home)).toBeLessThan(1e-6);
   });
 
   it('bater e voltar: o veículo volta ao lugar e o visual não muda', () => {

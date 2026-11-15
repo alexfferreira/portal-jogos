@@ -73,6 +73,8 @@ describe('computeLayout', () => {
   });
 
   it('a fila cabe em linhas, da esquerda para a direita e de cima para baixo', () => {
+    // A fila precisa ser bem visível no celular: passageiros afastados o bastante e grandes.
+    expect(QUEUE_SPACING).toBeGreaterThanOrEqual(0.32);
     expect(layout.queue.count).toBe(40);
     expect(layout.queue.cols * layout.queue.rows).toBeGreaterThanOrEqual(40);
     const p0 = layout.queuePoint(0);
