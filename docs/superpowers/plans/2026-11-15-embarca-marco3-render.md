@@ -105,11 +105,11 @@ Fora do pacote: `apps/portal/src/lib/games.ts`, `packages/ui/src/Icon.svelte`, `
 - Produces:
   - `interface PathPoint { x: number; z: number; heading: number }` (`heading` = ângulo da lógica em radianos, anti-horário na tela; é o `rotation.y` do veículo; a direção de avanço no mundo é `(cos heading, −sin heading)` em (X, Z))
   - `type Step =
-  | { kind: 'drive'; vehicle: number; path: PathPoint[]; duration: number; delay: number }
-  | { kind: 'board'; passenger: number; vehicle: number; slot: number; from: WorldPoint; to: WorldPoint; duration: number; delay: number }
-  | { kind: 'depart'; vehicle: number; slot: number; path: PathPoint[]; duration: number; delay: number }
-  | { kind: 'bump'; vehicle: number; forward: number; blockers: number[]; duration: number; delay: number }
-  | { kind: 'shake'; vehicle: number; duration: number; delay: number }`
+| { kind: 'drive'; vehicle: number; path: PathPoint[]; duration: number; delay: number }
+| { kind: 'board'; passenger: number; vehicle: number; slot: number; from: WorldPoint; to: WorldPoint; duration: number; delay: number }
+| { kind: 'depart'; vehicle: number; slot: number; path: PathPoint[]; duration: number; delay: number }
+| { kind: 'bump'; vehicle: number; forward: number; blockers: number[]; duration: number; delay: number }
+| { kind: 'shake'; vehicle: number; duration: number; delay: number }`
   - `interface MovePlan { steps: Step[]; total: number }` (`total` = maior `delay + duration`)
   - `function planMove(before: State, result: MoveApplied | MoveRejected, layout: Layout): MovePlan`
   - Constantes exportadas: `DRIVE_SPEED = 12` (unidades/s na perna reta), `PARK_DURATION = 0.45`, `BOARD_DURATION = 0.22`, `BOARD_STAGGER = 0.06`, `DEPART_DURATION = 0.4`, `BUMP_DURATION = 0.3`, `SHAKE_DURATION = 0.25`, `MAX_BUMP_TRAVEL = 1.2` (unidades).
