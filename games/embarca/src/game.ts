@@ -133,8 +133,8 @@ export const embarcaGame: GameModule = {
     /** Solução do estado atual (tutorial); `null` = desconhecida, recalcular pelo Worker. */
     let route: Move[] | null = hasTutorial(level) ? [...first.solution] : null;
     let initialRoute: Move[] = first.solution;
-    /** Jogada em animação: a mãozinha some até ela terminar. */
-    let moving = false;
+    /** Jogadas ainda em animação (podem ser várias, sobrepostas): a mãozinha some até acabarem. */
+    let pendingMoves = 0;
     let handTarget: number | null = null;
 
     // --- HUD e diagnóstico ----------------------------------------------------------
@@ -196,7 +196,7 @@ export const embarcaGame: GameModule = {
 
     /** Mãozinha: a dica tem prioridade (ela já tem o anel); some durante a animação. */
     const refreshHand = (): void => {
-      handTarget = activeHint !== null || moving ? null : currentStep().hand;
+      handTarget = activeHint !== null || pendingMoves > 0 ? null : currentStep().hand;
       board.setHand(handTarget);
       ds.hand = handTarget === null ? '' : String(handTarget);
     };
@@ -313,7 +313,9 @@ export const embarcaGame: GameModule = {
 
     const onMoveDone = (mine: number): void => {
       if (destroyed || mine !== epoch) return;
-      moving = false;
+      pendingMoves = Math.max(0, pendingMoves - 1);
+      // Com outra jogada ainda animando, quem termina por último decide vitória e sem jogadas.
+      if (pendingMoves > 0) return;
       if (session.won) {
         win();
         return;
@@ -331,7 +333,7 @@ export const embarcaGame: GameModule = {
       session = new Session(gen.state.level);
       initialRoute = gen.solution;
       route = hasTutorial(level) ? [...initialRoute] : null;
-      moving = false;
+      pendingMoves = 0;
       won = false;
       busy = false;
       failedTarget = null;
@@ -374,7 +376,7 @@ export const embarcaGame: GameModule = {
         ctx.audio.play('click');
         const mine = epoch;
         route = route ? followRoute(route, { vehicle }) : null;
-        moving = true;
+        pendingMoves++;
         stateChanged();
         board.playMove(before, { vehicle }, result, result.state, () => onMoveDone(mine));
       } else {
@@ -446,11 +448,10 @@ export const embarcaGame: GameModule = {
     const offTap = stage.onTap((p) => {
       ctx.audio.unlock();
       if (destroyed || paused) return;
-      // Interromper: qualquer animação em curso termina agora (e pode disparar a vitória);
-      // só depois decidimos se o toque ainda vale.
-      board.finishAnimations();
-      if (busy || won) return;
-      const id = board.pick(p.x, p.y);
+      // As animações em curso continuam (jogadas se sobrepõem); o toque vale pelo estado
+      // lógico, em que o veículo que acabou de sair já não está no tabuleiro.
+      if (busy || won || session.won) return;
+      const id = board.pick(p.x, p.y, session.state.onBoard);
       if (id !== null) tapVehicle(id);
     });
 
@@ -473,7 +474,7 @@ export const embarcaGame: GameModule = {
       epoch++;
       hintPending = false;
       route = hasTutorial(level) ? [...initialRoute] : null;
-      moving = false;
+      pendingMoves = 0;
       const state = session.restart();
       won = false;
       busy = false;

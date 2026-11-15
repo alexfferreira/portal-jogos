@@ -46,6 +46,7 @@ export class QueueView {
     this.geometry = new CapsuleGeometry(RADIUS, BODY, 4, 8);
     this.baseMaterial = createToyMaterial(0xffffff, quality);
     this.mesh = new InstancedMesh(this.geometry, this.baseMaterial, colors.length);
+    this.mesh.name = 'queue-passengers';
     const color = new Color();
     colors.forEach((c, i) => {
       color.setHex(paletteColor(c).hex);

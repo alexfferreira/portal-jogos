@@ -2,7 +2,9 @@
  * O tabuleiro 3D da Embarca: chão, veículos, vagas e fila. Só reflete o estado que a lógica
  * entrega e anima as transições; nunca decide regra. Recebe a jogada e os estados antes/depois.
  *
- * Interrompível: toda animação é registrada; `finishAnimations()` salta todas para o fim e, ao
+ * Jogadas podem se SOBREPOR: tocar num veículo enquanto o anterior ainda voa não interrompe o voo;
+ * o visual só é reconciliado com o estado lógico quando todas as animações terminam.
+ * `finishAnimations()` (reiniciar, power-ups, fase nova) salta todas para o fim e, ao
  * terminar, o visual é reconciliado com o `State` lógico. Trocar de fase descarta o que estava
  * em andamento sem chamar o `onDone` antigo (época).
  */
@@ -122,6 +124,10 @@ export class Board {
   private shownOnBoard: number[] = [];
   private shownSlots: (number | null)[] = [];
   private shownQueue = 0;
+  /** Passageiros já escondidos da fila (nunca diminui durante jogadas sobrepostas). */
+  private queueShown = 0;
+  /** O estado lógico mais recente passado a `playMove`: para onde o visual converge. */
+  private latestState: State | null = null;
   private liveSlots: (Slot | null)[] = [];
   private readonly tracked = new Set<TweenHandle>();
   private epoch = 0;
@@ -245,6 +251,7 @@ export class Board {
     this.shownOnBoard = [...state.onBoard];
     this.shownSlots = layout.slots.map((_, i) => state.slots[i]?.vehicle ?? null);
     this.shownQueue = state.queueIndex;
+    this.queueShown = state.queueIndex;
     this.liveSlots = layout.slots.map((_, i) => state.slots[i] ?? null);
     this.slots?.setSlots(this.liveSlots);
     this.queue?.setProgress(state.queueIndex);
@@ -477,7 +484,8 @@ export class Board {
     after: State,
     onDone: () => void,
   ): void {
-    this.finishAnimations();
+    // Não termina as animações em curso: a jogada nova começa e a anterior continua.
+    this.latestState = after;
     // Uma jogada aceita muda o estado e apaga a dica; uma recusada (bate e volta) não: a dica
     // que o jogador já gastou continua valendo, e é restaurada ao reconciliar o visual.
     const keepHint = result.ok ? null : this.hintVehicle;
@@ -495,8 +503,11 @@ export class Board {
     }
     const plan = planMove(before, move, result, layout);
     if (plan.steps.length === 0) {
-      this.applyState(after);
-      restoreHint();
+      // Só reconcilia se nada mais está animando (senão o visual saltaria no meio de um voo).
+      if (this.tracked.size === 0) {
+        this.applyState(after);
+        restoreHint();
+      }
       onDone();
       return;
     }
@@ -506,8 +517,11 @@ export class Board {
       remaining--;
       if (remaining > 0) return;
       for (const f of flyers) this.queue?.recycleFlyer(f);
-      this.applyState(after);
-      restoreHint();
+      // Só a última animação a terminar reconcilia o visual com o estado mais recente.
+      if (this.tracked.size === 0) {
+        this.applyState(this.latestState ?? after);
+        restoreHint();
+      }
       onDone();
     };
     for (const step of plan.steps) this.runStep(step, flyers, stepDone);
@@ -550,7 +564,8 @@ export class Board {
           ease: easing.outCubic,
           onUpdate: (t) => {
             if (flyer === null) {
-              this.queue?.setProgress(step.passenger + 1);
+              this.queueShown = Math.max(this.queueShown, step.passenger + 1);
+              this.queue?.setProgress(this.queueShown);
               flyer = this.queue?.flyer(step.passenger) ?? null;
               if (flyer !== null) flyers.push(flyer);
             }
@@ -563,7 +578,7 @@ export class Board {
           },
           onComplete: () => {
             const cur = this.liveSlots[step.slot];
-            if (cur !== null && cur !== undefined) {
+            if (cur !== null && cur !== undefined && cur.vehicle === step.vehicle) {
               this.liveSlots[step.slot] = { vehicle: cur.vehicle, filled: cur.filled + 1 };
               this.slots?.setSlots(this.liveSlots);
             }
@@ -590,7 +605,9 @@ export class Board {
           },
           onComplete: () => {
             if (view !== undefined) view.visible = false;
-            this.liveSlots[step.slot] = null;
+            // Outro veículo pode já ter estacionado nesta vaga (jogadas sobrepostas).
+            if (this.liveSlots[step.slot]?.vehicle === step.vehicle)
+              this.liveSlots[step.slot] = null;
             this.slots?.setSlots(this.liveSlots);
             done();
           },
@@ -702,10 +719,10 @@ export class Board {
   // --- toque e dados ---------------------------------------------------------------
 
   /** Veículo (no tabuleiro) escolhido por um toque em px do canvas, ou `null`. */
-  pick(px: number, py: number): number | null {
+  pick(px: number, py: number, onBoard?: readonly number[]): number | null {
     const view = this.pickView();
     if (this.level === null || this.layout === null || view === null) return null;
-    return pickVehicle(this.level, this.shownOnBoard, this.layout, view, px, py);
+    return pickVehicle(this.level, onBoard ?? this.shownOnBoard, this.layout, view, px, py);
   }
 
   private pickView(): {
