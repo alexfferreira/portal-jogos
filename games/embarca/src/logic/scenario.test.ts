@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMove,
-  createLevel,
   createState,
   isStuck,
   isWin,
@@ -9,23 +8,9 @@ import {
   type MoveApplied,
   type State,
 } from './index';
+import { scenarioLevel } from './testkit';
 
-const rep = (color: number, n: number): number[] => Array<number>(n).fill(color);
-
-/** Fase de ponta a ponta: 2 carros, 2 vans e 2 ônibus, com ângulos livres e dois bloqueios. */
-const scenario = () =>
-  createLevel({
-    board: { width: 10000, height: 10000 },
-    vehicles: [
-      { kind: 'car', color: 0, cx: 1500, cy: 1500, angle: 0 },
-      { kind: 'car', color: 0, cx: 6000, cy: 1500, angle: 0 },
-      { kind: 'van', color: 1, cx: 2000, cy: 4000, angle: 90 },
-      { kind: 'van', color: 1, cx: 2000, cy: 7000, angle: 90 },
-      { kind: 'bus', color: 2, cx: 7000, cy: 5000, angle: 135 },
-      { kind: 'bus', color: 2, cx: 8500, cy: 8500, angle: 30 },
-    ],
-    queue: [...rep(0, 8), ...rep(1, 12), ...rep(2, 20)],
-  });
+const scenario = scenarioLevel;
 
 const WINNING = [1, 0, 3, 2, 4, 5];
 const LOSING = [4, 5, 3, 2];

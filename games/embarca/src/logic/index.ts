@@ -22,6 +22,14 @@ export {
   type UndoOutcome,
 } from './session';
 export {
+  canonicalKey,
+  embarcaProblem,
+  hint,
+  solve,
+  type HintResult,
+  type SolveResult,
+} from './solver';
+export {
   addSlot,
   applyMove,
   createState,
