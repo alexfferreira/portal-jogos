@@ -34,7 +34,7 @@ describe('levelConfig', () => {
 
   it('fase 200: teto da curva', () => {
     expect(levelConfig(200)).toMatchObject({
-      vehicles: 24,
+      vehicles: 20,
       colors: PALETTE.length,
       angleStep: 1,
       peakTarget: 4,

@@ -23,6 +23,7 @@ export {
   type PowerUps,
   type UndoOutcome,
 } from './session';
+export { CLEARANCE, placeVehicles, type PlacedVehicle } from './placement';
 export { mixSeed } from './seed';
 export {
   canonicalKey,

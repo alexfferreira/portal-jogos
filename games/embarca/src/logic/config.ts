@@ -23,7 +23,7 @@ export interface LevelConfig {
 
 export function levelConfig(level: number): LevelConfig {
   if (!Number.isInteger(level) || level < 1) throw new RangeError('fase deve ser um inteiro >= 1');
-  const vehicles = Math.min(24, 4 + Math.floor(level * 0.4));
+  const vehicles = Math.min(20, 4 + Math.floor(level * 0.4));
   const colors = Math.min(vehicles, PALETTE.length, 2 + Math.floor(level / 6));
   const mix: Record<VehicleKind, number> =
     level <= 3
