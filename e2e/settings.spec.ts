@@ -65,7 +65,7 @@ test('exportar e importar o progresso (backup)', async ({ page }, testInfo) => {
   );
 
   // Apaga o progresso e restaura pelo arquivo.
-  await page.getByRole('button', { name: 'Reiniciar progresso' }).click();
+  await page.getByRole('button', { name: 'Reiniciar progresso' }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Apagar progresso' }).click();
   await expect(page.getByTestId('message')).toHaveText('Progresso apagado.');
 
@@ -112,7 +112,7 @@ test('reiniciar progresso pede confirmação dentro do app', async ({ page }) =>
     await d.dismiss();
   });
 
-  await page.getByRole('button', { name: 'Reiniciar progresso' }).click();
+  await page.getByRole('button', { name: 'Reiniciar progresso' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Reiniciar o progresso de Mistura?' });
   await expect(dialog).toBeVisible();
   // O foco abre no botão seguro e o fundo fica inerte (fora do alcance de Tab e leitor de tela).
@@ -128,7 +128,7 @@ test('reiniciar progresso pede confirmação dentro do app', async ({ page }) =>
 
   // Confirmar apaga.
   await page.getByRole('button', { name: 'Configurações' }).click();
-  await page.getByRole('button', { name: 'Reiniciar progresso' }).click();
+  await page.getByRole('button', { name: 'Reiniciar progresso' }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Apagar progresso' }).click();
   await page.getByRole('button', { name: 'Voltar' }).click();
   await expect(page.getByTestId('progress-mistura')).toHaveText('Fase 1');

@@ -80,6 +80,27 @@ export const embarcaGame: GameModule = {
         : {}),
     });
 
+    // Diagnóstico leve (a cada 0,5 s), só em teste: quadros por segundo e recursos da GPU.
+    if (PUBLISH_TEST_DATA) {
+      let clock = 0;
+      let frames = 0;
+      ctx.onDestroy(
+        stage.onFrame((dt) => {
+          clock += dt;
+          frames++;
+          if (clock < 0.5) return;
+          const info = stage.renderer.info;
+          ds.calls = String(info.render.calls);
+          ds.triangles = String(info.render.triangles);
+          ds.geometries = String(info.memory.geometries);
+          ds.textures = String(info.memory.textures);
+          ds.fps = String(Math.round(frames / clock));
+          clock = 0;
+          frames = 0;
+        }),
+      );
+    }
+
     let session = new Session(first.state.level);
     let won = false;
     let busy = false;
