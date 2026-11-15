@@ -22,6 +22,21 @@ describe('meta da Embarca', () => {
     }
   });
 
+  it('tem os textos dos power-ups, da dica e do tutorial nos três idiomas', () => {
+    const keys = [
+      'embarca.powerup.undo',
+      'embarca.powerup.extraSlot',
+      'embarca.powerup.hint',
+      'embarca.hint.limit',
+      'embarca.tutorial.tap',
+      'embarca.tutorial.queue',
+      'embarca.tutorial.blocked',
+    ];
+    for (const [locale, dict] of Object.entries(messages)) {
+      for (const key of keys) expect(dict[key], `${locale} ${key}`).toBeTruthy();
+    }
+  });
+
   it('os textos não têm exclamação nem "por favor"', () => {
     for (const dict of Object.values(messages)) {
       for (const text of Object.values(dict)) {
